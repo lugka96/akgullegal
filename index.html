@@ -1,0 +1,2341 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hukuk Teklif Asistanı</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4a6cf7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Hukuk Asistan">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <i class="fas fa-balance-scale"></i>
+                <span>Teklif Asistanı</span>
+            </div>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-page="dashboard">
+                <i class="fas fa-home"></i><span>Ana Sayfa</span>
+            </a>
+            <a href="#" class="nav-item" data-page="new-proposal">
+                <i class="fas fa-plus-circle"></i><span>Yeni Teklif</span>
+            </a>
+            <a href="#" class="nav-item" data-page="proposals">
+                <i class="fas fa-file-alt"></i><span>Tekliflerim</span>
+            </a>
+            <a href="#" class="nav-item" data-page="templates">
+                <i class="fas fa-copy"></i><span>Şablonlar</span>
+            </a>
+            <a href="#" class="nav-item" data-page="credentials">
+                <i class="fas fa-briefcase"></i><span>Credential Kütüphanesi</span>
+            </a>
+            <a href="#" class="nav-item" data-page="contracts">
+                <i class="fas fa-file-signature"></i><span>Sözleşme & Vekaletname</span>
+            </a>
+            <a href="#" class="nav-item" data-page="clients">
+                <i class="fas fa-users"></i><span>Müvekkiller (CRM)</span>
+            </a>
+            <a href="#" class="nav-item" data-page="case-files">
+                <i class="fas fa-folder-open"></i><span>Dosya Takibi</span>
+            </a>
+            <a href="#" class="nav-item" data-page="hearings">
+                <i class="fas fa-gavel"></i><span>Duruşma & Süre Takibi</span>
+            </a>
+            <a href="#" class="nav-item" data-page="expenses">
+                <i class="fas fa-receipt"></i><span>Masraf Takibi</span>
+            </a>
+            <a href="#" class="nav-item" data-page="tasks">
+                <i class="fas fa-tasks"></i><span>Görevler</span>
+            </a>
+            <a href="#" class="nav-item" data-page="timesheet">
+                <i class="fas fa-stopwatch"></i><span>Zaman Takibi</span>
+            </a>
+            <a href="#" class="nav-item" data-page="contacts">
+                <i class="fas fa-address-book"></i><span>Karşı Taraf & Kişiler</span>
+            </a>
+            <a href="#" class="nav-item" data-page="petitions">
+                <i class="fas fa-file-contract"></i><span>Dilekçe Şablonları</span>
+            </a>
+            <a href="#" class="nav-item" data-page="tools">
+                <i class="fas fa-calculator"></i><span>Hesaplama Araçları</span>
+            </a>
+            <a href="#" class="nav-item" data-page="settings">
+                <i class="fas fa-cog"></i><span>Ayarlar</span>
+            </a>
+        </nav>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+        <!-- TOP BAR -->
+        <header class="topbar">
+            <button class="sidebar-toggle" id="sidebarToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="topbar-title" id="pageTitle">Ana Sayfa</div>
+            <div class="topbar-search" style="flex:1;max-width:400px;margin:0 20px;">
+                <div style="position:relative;">
+                    <i class="fas fa-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-secondary);font-size:0.85rem;"></i>
+                    <input type="text" id="globalSearchInput" placeholder="Dosya, müvekkil, teklif ara... (Ctrl+K)" style="width:100%;padding:8px 12px 8px 36px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font);font-size:0.85rem;background:var(--bg);color:var(--text);outline:none;" onfocus="openGlobalSearch()" oninput="performGlobalSearch(this.value)">
+                    <div id="globalSearchResults" class="global-search-dropdown" style="display:none;"></div>
+                </div>
+            </div>
+            <div class="topbar-actions">
+                <button class="btn btn-sm btn-ghost" id="themeToggle" title="Tema Değiştir">
+                    <i class="fas fa-moon"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- NOTIFICATION BANNER -->
+        <div class="notification-banner" id="notificationBanner" style="display:none;">
+            <i class="fas fa-exclamation-triangle"></i> <span id="bannerText"></span>
+        </div>
+
+        <!-- PAGE: DASHBOARD -->
+        <div class="page active" id="page-dashboard">
+            <!-- Quick Actions -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary" onclick="generateMonthlyReport()">
+                        <i class="fas fa-chart-bar"></i> Aylık Büro Raporu
+                    </button>
+                </div>
+                <button class="btn btn-outline" onclick="openQuickNote()">
+                    <i class="fas fa-sticky-note"></i> Hızlı Not
+                </button>
+            </div>
+
+            <!-- BUGÜNKÜ GÜNDEM -->
+            <div class="form-card" id="todayAgendaCard" style="margin-bottom:20px;border-left:4px solid var(--primary);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <h3><i class="fas fa-calendar-day" style="color:var(--primary);margin-right:8px;"></i>Bugünkü Gündem</h3>
+                    <span style="font-size:0.82rem;color:var(--text-secondary);" id="todayDateLabel"></span>
+                </div>
+                <div id="todayAgendaContent">
+                    <p class="empty-state">Yükleniyor...</p>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-file-alt"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-number" id="statProposals">0</span>
+                        <span class="stat-label">Toplam Teklif</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon accent2"><i class="fas fa-check-circle"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-number" id="statAccepted">0</span>
+                        <span class="stat-label">Kabul Edilen</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon accent3"><i class="fas fa-briefcase"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-number" id="statCredentials">0</span>
+                        <span class="stat-label">Credential</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon accent4"><i class="fas fa-file-signature"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-number" id="statContracts">0</span>
+                        <span class="stat-label">Sözleşme</span>
+                    </div>
+                </div>
+            </div>
+            <!-- KPI Satırı -->
+            <div id="dashboardKPIs" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;"></div>
+
+            <!-- Dashboard Charts -->
+            <div class="dashboard-charts">
+                <div class="chart-card">
+                    <h4>Teklif Durumu</h4>
+                    <canvas id="chartProposalStatus" height="200"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h4>Aylık Teklif Sayısı</h4>
+                    <canvas id="chartMonthly" height="200"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h4>Hukuki Alan Dağılımı</h4>
+                    <canvas id="chartAreas" height="200"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h4>Gelir Takibi (₺)</h4>
+                    <canvas id="chartRevenue" height="200"></canvas>
+                </div>
+            </div>
+
+            <!-- Haftalık Ajanda -->
+            <div class="form-card" id="weeklyAgendaCard" style="margin-bottom:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <h3><i class="fas fa-calendar-week" style="color:var(--accent2);margin-right:8px;"></i>Haftalık Ajanda</h3>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button class="btn btn-sm btn-ghost" onclick="shiftWeeklyAgenda(-1)"><i class="fas fa-chevron-left"></i></button>
+                        <span id="weeklyAgendaLabel" style="font-size:0.82rem;color:var(--text-secondary);min-width:120px;text-align:center;"></span>
+                        <button class="btn btn-sm btn-ghost" onclick="shiftWeeklyAgenda(1)"><i class="fas fa-chevron-right"></i></button>
+                    </div>
+                </div>
+                <div id="weeklyAgendaContent" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">
+                    <!-- JS ile doldurulacak -->
+                </div>
+            </div>
+
+            <!-- Upcoming Tasks -->
+            <div class="dashboard-section">
+                <h3>Yaklaşan Görevler</h3>
+                <div id="dashboardTasks" class="recent-list">
+                    <p class="empty-state">Henüz görev yok.</p>
+                </div>
+            </div>
+
+            <div class="dashboard-section">
+                <h3>Son Teklifler</h3>
+                <div id="recentProposals" class="recent-list">
+                    <p class="empty-state">Henüz teklif oluşturulmadı. <a href="#" data-page="new-proposal" class="link">İlk teklifinizi oluşturun →</a></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: NEW PROPOSAL (Wizard) -->
+        <div class="page" id="page-new-proposal">
+            <!-- Wizard Steps Indicator -->
+            <div class="wizard-steps">
+                <div class="wizard-step active" data-step="1">
+                    <div class="step-number">1</div>
+                    <span>Genel Bilgi</span>
+                </div>
+                <div class="wizard-step" data-step="2">
+                    <div class="step-number">2</div>
+                    <span>Anlayışımız</span>
+                </div>
+                <div class="wizard-step" data-step="3">
+                    <div class="step-number">3</div>
+                    <span>İş Adımları</span>
+                </div>
+                <div class="wizard-step" data-step="4">
+                    <div class="step-number">4</div>
+                    <span>Ücretlendirme</span>
+                </div>
+                <div class="wizard-step" data-step="5">
+                    <div class="step-number">5</div>
+                    <span>Özgeçmiş</span>
+                </div>
+                <div class="wizard-step" data-step="6">
+                    <div class="step-number">6</div>
+                    <span>Credentials</span>
+                </div>
+                <div class="wizard-step" data-step="7">
+                    <div class="step-number">7</div>
+                    <span>Önizleme</span>
+                </div>
+            </div>
+
+            <!-- STEP 1: Genel Bilgi -->
+            <div class="wizard-content active" data-step="1">
+                <div class="form-card">
+                    <h2>Genel Bilgi</h2>
+                    <p class="form-desc">Teklifin temel bilgilerini girin.</p>
+
+                    <div class="form-group">
+                        <label>Teklif Başlığı</label>
+                        <input type="text" id="proposalTitle" placeholder="Örn: ABC A.Ş. Birleşme & Devralma Hukuki Danışmanlık">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Müvekkil Adı / Şirket Adı</label>
+                            <input type="text" id="clientName" placeholder="Örn: ABC Holding A.Ş.">
+                        </div>
+                        <div class="form-group">
+                            <label>İletişim Kişisi</label>
+                            <input type="text" id="contactPerson" placeholder="Örn: Ahmet Yılmaz">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Teklif Tarihi</label>
+                            <input type="date" id="proposalDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Geçerlilik Süresi (gün)</label>
+                            <input type="number" id="validityDays" value="30" min="1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Teklif Dili</label>
+                            <select id="proposalLang">
+                                <option value="tr">Türkçe</option>
+                                <option value="en">English</option>
+                                <option value="dual">Türkçe / English (Dual)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Para Birimi</label>
+                            <select id="proposalCurrency">
+                                <option value="TRY">₺ Türk Lirası (TRY)</option>
+                                <option value="USD">$ ABD Doları (USD)</option>
+                                <option value="EUR">€ Euro (EUR)</option>
+                                <option value="GBP">£ İngiliz Sterlini (GBP)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Antetli Kağıt</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="letterhead" value="full" checked>
+                                <span class="radio-custom"></span>
+                                Tam Antetli (logo, adres, iletişim)
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="letterhead" value="minimal">
+                                <span class="radio-custom"></span>
+                                Minimal (sadece büro adı)
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="letterhead" value="none">
+                                <span class="radio-custom"></span>
+                                Antetsiz
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Kapak Sayfası</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="coverPage" value="yes">
+                                    <span class="radio-custom"></span>
+                                    Kapak sayfası ekle
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="coverPage" value="no" checked>
+                                    <span class="radio-custom"></span>
+                                    Kapak sayfası yok
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>İmza Görseli</label>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <label class="btn btn-sm btn-outline">
+                                    <i class="fas fa-upload"></i> İmza Yükle
+                                    <input type="file" id="signatureUpload" accept=".png,.jpg,.jpeg" style="display:none;" onchange="handleSignatureUpload(this)">
+                                </label>
+                                <span id="signatureStatus" style="font-size:0.8rem;color:var(--text-secondary);">Yüklü değil</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Teklif Türü</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="proposalType" value="specific" checked>
+                                <span class="radio-custom"></span>
+                                Konuya Özel Teklif
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="proposalType" value="general">
+                                <span class="radio-custom"></span>
+                                Genel Hukuk Hizmeti (Aylık Sabit)
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="proposalType" value="multi">
+                                <span class="radio-custom"></span>
+                                Çoklu Konu Teklifi
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Multi-topic ekle alanı -->
+                    <div id="multiTopicArea" class="hidden">
+                        <div class="form-group">
+                            <label>Konular</label>
+                            <div id="topicsList"></div>
+                            <button class="btn btn-sm btn-outline" id="addTopicBtn">
+                                <i class="fas fa-plus"></i> Konu Ekle
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tek konu alanı -->
+                    <div id="singleTopicArea">
+                        <div class="form-group">
+                            <label>Hukuki Konu / Alan</label>
+                            <select id="legalArea">
+                                <option value="">Seçiniz...</option>
+                                <option value="sirketler">Şirketler Hukuku</option>
+                                <option value="birlesme">Birleşme & Devralma (M&A)</option>
+                                <option value="is">İş Hukuku</option>
+                                <option value="sozlesme">Sözleşmeler Hukuku</option>
+                                <option value="fikri">Fikri Mülkiyet</option>
+                                <option value="rekabet">Rekabet Hukuku</option>
+                                <option value="uyum">Uyum & Regülasyon</option>
+                                <option value="dava">Dava & Uyuşmazlık</option>
+                                <option value="gayrimenkul">Gayrimenkul Hukuku</option>
+                                <option value="vergi">Vergi Hukuku</option>
+                                <option value="idare">İdare Hukuku</option>
+                                <option value="icra">İcra & İflas Hukuku</option>
+                                <option value="ceza">Ceza Hukuku</option>
+                                <option value="tuketici">Tüketici Hukuku</option>
+                                <option value="kvkk">KVKK / Kişisel Verilerin Korunması</option>
+                                <option value="enerji">Enerji Hukuku</option>
+                                <option value="saglik">Sağlık Hukuku</option>
+                                <option value="spor">Spor Hukuku</option>
+                                <option value="deniz">Deniz Ticaret Hukuku</option>
+                                <option value="dis-ticaret">Dış Ticaret & Gümrük Hukuku</option>
+                                <option value="tahkim">Tahkim & Arabuluculuk</option>
+                                <option value="genel">Genel Hukuk Danışmanlığı</option>
+                                <option value="diger">Diğer</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Kısa Açıklama</label>
+                        <textarea id="proposalSummary" rows="3" placeholder="Teklifin kısa özeti..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 2: Anlayışımız -->
+            <div class="wizard-content" data-step="2">
+                <div class="form-card">
+                    <h2>Anlayışımız</h2>
+                    <p class="form-desc">Müvekkilin ihtiyacını nasıl anladığınızı açıklayın.</p>
+
+                    <div class="form-group">
+                        <label>Şablon Seç (Opsiyonel)</label>
+                        <select id="understandingTemplate">
+                            <option value="">Boş başla...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Anlayışımız Metni</label>
+                        <textarea id="understandingText" rows="12" placeholder="Müvekkilimizin ihtiyaçlarını ve beklentilerini aşağıdaki şekilde anlıyoruz:
+
+- Müvekkilimiz ... konusunda hukuki danışmanlık hizmeti talep etmektedir.
+- Bu kapsamda ...
+- Anlayışımıza göre ..."></textarea>
+                    </div>
+                    <div class="ai-helper">
+                        <button class="btn btn-sm btn-ghost" id="aiSuggestUnderstanding">
+                            <i class="fas fa-magic"></i> Örnek metin oluştur
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 3: İş Adımları -->
+            <div class="wizard-content" data-step="3">
+                <div class="form-card">
+                    <h2>Yapılacak İş Adımları</h2>
+                    <p class="form-desc">Hukuki hizmet kapsamında gerçekleştirilecek iş adımlarını belirleyin.</p>
+
+                    <div id="workStepsList">
+                        <!-- Dinamik olarak eklenecek -->
+                    </div>
+                    <button class="btn btn-outline" id="addWorkStepBtn">
+                        <i class="fas fa-plus"></i> İş Adımı Ekle
+                    </button>
+                </div>
+            </div>
+
+            <!-- STEP 4: Ücretlendirme -->
+            <div class="wizard-content" data-step="4">
+                <div class="form-card">
+                    <h2>Avukatlık Hizmet Bedeli</h2>
+                    <p class="form-desc">Ücretlendirme modelinizi ve tutarları belirleyin.</p>
+
+                    <div id="feeSection">
+                        <!-- Konuya özel ücret (tek konu) -->
+                        <div id="specificFeeArea">
+                            <div class="form-group">
+                                <label>Ücretlendirme Modeli</label>
+                                <select id="feeModel">
+                                    <option value="fixed">Maktu (Sabit) Ücret</option>
+                                    <option value="hourly">Saatlik Ücret</option>
+                                    <option value="success">Başarı Primi (Success Fee)</option>
+                                    <option value="mixed">Karma (Sabit + Saatlik)</option>
+                                    <option value="monthly">Aylık Sabit Ücret</option>
+                                </select>
+                            </div>
+
+                            <div id="feeDetailsFixed">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Toplam Ücret (TL)</label>
+                                        <input type="text" id="fixedFeeAmount" placeholder="Örn: 150.000">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>KDV</label>
+                                        <select id="fixedFeeVat">
+                                            <option value="20">%20 KDV dahil</option>
+                                            <option value="0">KDV hariç</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="feeDetailsHourly" class="hidden">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Saatlik Ücret (TL)</label>
+                                        <input type="text" id="hourlyRate" placeholder="Örn: 5.000">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Tahmini Süre (saat)</label>
+                                        <input type="number" id="estimatedHours" placeholder="Örn: 40">
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="feeDetailsSuccess" class="hidden">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Başarı Primi Oranı (%)</label>
+                                        <input type="number" id="successRate" placeholder="Örn: 15" min="0" max="100">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Başarı Kriteri</label>
+                                        <input type="text" id="successCriteria" placeholder="Örn: Davanın kazanılması">
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="feeDetailsMixed" class="hidden">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Sabit Kısım (TL)</label>
+                                        <input type="text" id="mixedFixed" placeholder="Örn: 50.000">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Saatlik Kısım (TL/saat)</label>
+                                        <input type="text" id="mixedHourly" placeholder="Örn: 3.000">
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="feeDetailsMonthly" class="hidden">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Aylık Sabit Ücret (TL)</label>
+                                        <input type="text" id="monthlyFee" placeholder="Örn: 75.000">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Sözleşme Süresi (ay)</label>
+                                        <input type="number" id="contractDuration" value="12" min="1">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Aylık Kapsam</label>
+                                    <textarea id="monthlyScope" rows="3" placeholder="Aylık hizmet kapsamını açıklayın..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Çoklu konu ücretleri -->
+                        <div id="multiFeeArea" class="hidden">
+                            <div id="multiFeeList"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Ödeme Koşulları</label>
+                        <textarea id="paymentTerms" rows="3" placeholder="Örn: Ücretin %50'si sözleşme imzalanmasını takiben, kalan %50'si işin tamamlanmasını takiben ödenecektir."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Masraflar Hakkında Not</label>
+                        <textarea id="expenseNote" rows="2" placeholder="Örn: Yargılama harçları, bilirkişi ücretleri vb. masraflar yukarıdaki ücrete dahil değildir."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 5: Özgeçmiş -->
+            <div class="wizard-content" data-step="5">
+                <div class="form-card">
+                    <h2>Avukat Özgeçmişleri</h2>
+                    <p class="form-desc">İşe özel olarak özelleştirebileceğiniz özgeçmiş bilgileri.</p>
+
+                    <div id="lawyersList">
+                        <!-- Dinamik -->
+                    </div>
+                    <button class="btn btn-outline" id="addLawyerBtn">
+                        <i class="fas fa-user-plus"></i> Avukat Ekle
+                    </button>
+                </div>
+            </div>
+
+            <!-- STEP 6: Credentials -->
+            <div class="wizard-content" data-step="6">
+                <div class="form-card">
+                    <h2>Benzer İş Deneyimleri (Credentials)</h2>
+                    <p class="form-desc">Benzer nitelikte tamamladığınız işleri ekleyin. Şirket müvekkiller için logo otomatik getirilir.</p>
+
+                    <div class="form-group">
+                        <label>Kütüphaneden Ekle</label>
+                        <select id="credentialLibrarySelect">
+                            <option value="">Kütüphaneden seçin...</option>
+                        </select>
+                        <button class="btn btn-sm btn-outline mt-1" id="addFromLibraryBtn">
+                            <i class="fas fa-plus"></i> Seçileni Ekle
+                        </button>
+                    </div>
+
+                    <div id="credentialsList">
+                        <!-- Dinamik -->
+                    </div>
+                    <button class="btn btn-outline" id="addCredentialBtn">
+                        <i class="fas fa-plus"></i> Yeni Credential Ekle
+                    </button>
+                </div>
+            </div>
+
+            <!-- STEP 7: Önizleme -->
+            <div class="wizard-content" data-step="7">
+                <div class="form-card" style="margin-bottom:16px;">
+                    <h4>Ek Beyanlar (Opsiyonel)</h4>
+                    <div style="display:flex;gap:24px;flex-wrap:wrap;">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="conflictOfInterest">
+                            <span class="checkbox-custom"></span>
+                            Çıkar Çatışması Beyanı ekle
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="confidentialityClause">
+                            <span class="checkbox-custom"></span>
+                            Gizlilik Taahhütnamesi ekle
+                        </label>
+                    </div>
+                </div>
+                <div class="preview-toolbar">
+                    <button class="btn btn-primary" id="exportWordBtn">
+                        <i class="fas fa-file-word"></i> Word İndir
+                    </button>
+                    <button class="btn btn-accent" id="exportPdfBtn">
+                        <i class="fas fa-file-pdf"></i> PDF İndir
+                    </button>
+                    <button class="btn btn-outline" id="saveProposalBtn">
+                        <i class="fas fa-save"></i> Kaydet
+                    </button>
+                    <button class="btn btn-ghost" id="saveTemplateBtn">
+                        <i class="fas fa-copy"></i> Şablon Olarak Kaydet
+                    </button>
+                </div>
+                <div class="preview-container" id="previewContainer">
+                    <!-- Rendered preview -->
+                </div>
+            </div>
+
+            <!-- Wizard Navigation -->
+            <div class="wizard-nav">
+                <button class="btn btn-ghost" id="prevStepBtn" disabled>
+                    <i class="fas fa-arrow-left"></i> Geri
+                </button>
+                <button class="btn btn-primary" id="nextStepBtn">
+                    İleri <i class="fas fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- PAGE: PROPOSALS LIST -->
+        <div class="page" id="page-proposals">
+            <div class="page-header">
+                <h2>Tekliflerim</h2>
+                <button class="btn btn-primary" data-page="new-proposal">
+                    <i class="fas fa-plus"></i> Yeni Teklif
+                </button>
+            </div>
+            <div id="proposalsList" class="proposals-grid">
+                <p class="empty-state">Henüz teklif yok.</p>
+            </div>
+        </div>
+
+        <!-- PAGE: TEMPLATES -->
+        <div class="page" id="page-templates">
+            <div class="page-header">
+                <h2>Şablonlar</h2>
+            </div>
+            <div class="templates-grid" id="templatesList">
+                <!-- Varsayılan şablonlar -->
+                <div class="template-card" data-template="ma">
+                    <div class="template-icon"><i class="fas fa-handshake"></i></div>
+                    <h4>Birleşme & Devralma</h4>
+                    <p>M&A işlemleri için kapsamlı teklif şablonu</p>
+                    <button class="btn btn-sm btn-outline use-template-btn" data-template="ma">Kullan</button>
+                </div>
+                <div class="template-card" data-template="litigation">
+                    <div class="template-icon"><i class="fas fa-gavel"></i></div>
+                    <h4>Dava Takibi</h4>
+                    <p>Dava süreçleri için standart teklif şablonu</p>
+                    <button class="btn btn-sm btn-outline use-template-btn" data-template="litigation">Kullan</button>
+                </div>
+                <div class="template-card" data-template="compliance">
+                    <div class="template-icon"><i class="fas fa-shield-alt"></i></div>
+                    <h4>Uyum & Regülasyon</h4>
+                    <p>KVKK, uyum programları için şablon</p>
+                    <button class="btn btn-sm btn-outline use-template-btn" data-template="compliance">Kullan</button>
+                </div>
+                <div class="template-card" data-template="general">
+                    <div class="template-icon"><i class="fas fa-balance-scale"></i></div>
+                    <h4>Genel Hukuk Danışmanlığı</h4>
+                    <p>Aylık sabit ücretli genel danışmanlık</p>
+                    <button class="btn btn-sm btn-outline use-template-btn" data-template="general">Kullan</button>
+                </div>
+                <div class="template-card" data-template="labor">
+                    <div class="template-icon"><i class="fas fa-users"></i></div>
+                    <h4>İş Hukuku</h4>
+                    <p>İş hukuku uyuşmazlıkları için şablon</p>
+                    <button class="btn btn-sm btn-outline use-template-btn" data-template="labor">Kullan</button>
+                </div>
+                <div class="template-card" data-template="contract">
+                    <div class="template-icon"><i class="fas fa-file-contract"></i></div>
+                    <h4>Sözleşme İnceleme</h4>
+                    <p>Sözleşme hazırlama ve inceleme şablonu</p>
+                    <button class="btn btn-sm btn-outline use-template-btn" data-template="contract">Kullan</button>
+                </div>
+            </div>
+            <h3 class="mt-2">Kayıtlı Şablonlarım</h3>
+            <div id="customTemplatesList" class="templates-grid">
+                <p class="empty-state">Henüz özel şablon yok.</p>
+            </div>
+        </div>
+
+        <!-- PAGE: CREDENTIALS LIBRARY -->
+        <div class="page" id="page-credentials">
+            <div class="page-header">
+                <h2>Credential Kütüphanesi</h2>
+                <button class="btn btn-primary" id="addCredLibBtn">
+                    <i class="fas fa-plus"></i> Yeni Ekle
+                </button>
+            </div>
+            <div id="credentialsLibraryList" class="credentials-grid">
+                <p class="empty-state">Henüz credential eklenmedi.</p>
+            </div>
+
+            <!-- Credential Ekleme Modal -->
+            <div class="modal" id="credentialModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Credential Ekle/Düzenle</h3>
+                        <button class="modal-close" id="closeCredModal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>İş Başlığı</label>
+                            <input type="text" id="credTitle" placeholder="Örn: ABC A.Ş. & XYZ A.Ş. Birleşme İşlemi">
+                        </div>
+                        <div class="form-group">
+                            <label>Hukuki Alan</label>
+                            <select id="credArea">
+                                <option value="sirketler">Şirketler Hukuku</option>
+                                <option value="birlesme">M&A</option>
+                                <option value="is">İş Hukuku</option>
+                                <option value="dava">Dava & Uyuşmazlık</option>
+                                <option value="uyum">Uyum</option>
+                                <option value="sozlesme">Sözleşme</option>
+                                <option value="gayrimenkul">Gayrimenkul</option>
+                                <option value="fikri">Fikri Mülkiyet</option>
+                                <option value="diger">Diğer</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Müvekkil (Şirket Adı)</label>
+                            <input type="text" id="credClient" placeholder="Örn: ABC Holding A.Ş.">
+                        </div>
+                        <div class="form-group">
+                            <label>Müvekkil Türü</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="credClientType" value="company" checked>
+                                    <span class="radio-custom"></span> Şirket
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="credClientType" value="individual">
+                                    <span class="radio-custom"></span> Gerçek Kişi
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group" id="credLogoGroup">
+                            <label>Şirket Logo URL (Opsiyonel)</label>
+                            <input type="text" id="credLogoUrl" placeholder="Otomatik aranacak veya manuel girin">
+                            <small>Şirket adı girildiğinde logo otomatik aranır (Clearbit)</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Kısa Açıklama</label>
+                            <textarea id="credDescription" rows="3" placeholder="Yapılan işin kısa açıklaması..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Yıl</label>
+                            <input type="number" id="credYear" value="2024" min="2000" max="2030">
+                        </div>
+                        <div class="form-group">
+                            <label>Gizlilik</label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="credConfidential">
+                                <span class="checkbox-custom"></span>
+                                Müvekkil adı gizli tutulsun (teklifte "Gizli" olarak görünür)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" id="cancelCredModal">İptal</button>
+                        <button class="btn btn-primary" id="saveCredModal">Kaydet</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: CONTRACTS & POWER OF ATTORNEY -->
+        <div class="page" id="page-contracts">
+            <div class="page-header">
+                <h2>Sözleşme & Vekaletname</h2>
+            </div>
+
+            <div class="contracts-tabs">
+                <button class="tab-btn active" data-tab="accepted">Kabul Edilen Teklifler</button>
+                <button class="tab-btn" data-tab="contracts-list">Sözleşmeler</button>
+                <button class="tab-btn" data-tab="poa-list">Vekaletnameler</button>
+            </div>
+
+            <div class="tab-content active" id="tab-accepted">
+                <div id="acceptedProposalsList">
+                    <p class="empty-state">Henüz kabul edilen teklif yok. Teklif listesinden kabul durumunu güncelleyin.</p>
+                </div>
+            </div>
+            <div class="tab-content" id="tab-contracts-list">
+                <div id="contractsList">
+                    <p class="empty-state">Henüz sözleşme oluşturulmadı.</p>
+                </div>
+            </div>
+            <div class="tab-content" id="tab-poa-list">
+                <div id="poaList">
+                    <p class="empty-state">Henüz vekaletname oluşturulmadı.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: CLIENTS (CRM) -->
+        <div class="page" id="page-clients">
+            <div class="page-header">
+                <h2>Müvekkil Yönetimi</h2>
+                <button class="btn btn-primary" onclick="openClientModal()">
+                    <i class="fas fa-plus"></i> Yeni Müvekkil
+                </button>
+            </div>
+            <div class="form-group" style="max-width:400px;margin-bottom:16px;">
+                <input type="text" id="clientSearch" placeholder="Müvekkil ara..." oninput="filterClients()">
+            </div>
+            <div id="clientsList" class="clients-grid">
+                <p class="empty-state">Henüz müvekkil kaydı yok.</p>
+            </div>
+
+            <!-- Client Modal -->
+            <div class="modal" id="clientModal">
+                <div class="modal-content" style="max-width:650px;">
+                    <div class="modal-header">
+                        <h3 id="clientModalTitle">Yeni Müvekkil</h3>
+                        <button class="modal-close" onclick="closeClientModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Müvekkil Adı / Şirket Adı</label>
+                                <input type="text" id="cmName" placeholder="ABC Holding A.Ş.">
+                            </div>
+                            <div class="form-group">
+                                <label>Tür</label>
+                                <select id="cmType">
+                                    <option value="company">Şirket</option>
+                                    <option value="individual">Gerçek Kişi</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Sektör</label>
+                                <input type="text" id="cmSector" placeholder="Enerji, Teknoloji, İnşaat...">
+                            </div>
+                            <div class="form-group">
+                                <label>Vergi No / TC Kimlik</label>
+                                <input type="text" id="cmTaxId" placeholder="1234567890">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>İletişim Kişisi</label>
+                                <input type="text" id="cmContact" placeholder="Ad Soyad">
+                            </div>
+                            <div class="form-group">
+                                <label>Telefon</label>
+                                <input type="text" id="cmPhone" placeholder="+90 5XX XXX XX XX">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>E-posta</label>
+                                <input type="email" id="cmEmail" placeholder="info@firma.com">
+                            </div>
+                            <div class="form-group">
+                                <label>Adres</label>
+                                <input type="text" id="cmAddress" placeholder="Şirket adresi">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Referans (Kimden Geldi?)</label>
+                                <input type="text" id="cmReferral" placeholder="Örn: Av. Mehmet, Google, Tanıdık">
+                            </div>
+                            <div class="form-group">
+                                <label>Segment</label>
+                                <select id="cmSegment">
+                                    <option value="normal">Normal</option>
+                                    <option value="vip">VIP</option>
+                                    <option value="potential">Potansiyel</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Notlar</label>
+                            <textarea id="cmNotes" rows="3" placeholder="Müvekkil hakkında genel notlar..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick="closeClientModal()">İptal</button>
+                        <button class="btn btn-primary" onclick="saveClient()">
+                            <i class="fas fa-save"></i> Kaydet
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Client Detail Modal -->
+            <div class="modal" id="clientDetailModal">
+                <div class="modal-content" style="max-width:800px;max-height:90vh;">
+                    <div class="modal-header">
+                        <h3 id="clientDetailTitle">Müvekkil Detayı</h3>
+                        <button class="modal-close" onclick="$('#clientDetailModal').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="contracts-tabs" id="clientDetailTabs">
+                            <button class="tab-btn active" data-tab="client-info-tab">Bilgiler</button>
+                            <button class="tab-btn" data-tab="client-proposals-tab">Teklifler</button>
+                            <button class="tab-btn" data-tab="client-notes-tab">Notlar/Günlük</button>
+                            <button class="tab-btn" data-tab="client-files-tab">Dosyalar</button>
+                        </div>
+                        <div class="tab-content active" id="tab-client-info-tab">
+                            <div id="clientInfoContent"></div>
+                        </div>
+                        <div class="tab-content" id="tab-client-proposals-tab">
+                            <div id="clientProposalsContent"></div>
+                        </div>
+                        <div class="tab-content" id="tab-client-notes-tab">
+                            <div class="form-group">
+                                <textarea id="newClientNote" rows="3" placeholder="Yeni not ekle... (toplantı, telefon, gelişme)"></textarea>
+                                <button class="btn btn-sm btn-primary mt-1" onclick="addClientNote()">
+                                    <i class="fas fa-plus"></i> Not Ekle
+                                </button>
+                            </div>
+                            <div id="clientNotesContent"></div>
+                        </div>
+                        <div class="tab-content" id="tab-client-files-tab">
+                            <div class="form-group">
+                                <label class="btn btn-sm btn-outline">
+                                    <i class="fas fa-upload"></i> Dosya Yükle
+                                    <input type="file" style="display:none;" onchange="uploadClientFile(this)" multiple>
+                                </label>
+                            </div>
+                            <div id="clientFilesContent"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: EXPENSES -->
+        <div class="page" id="page-expenses">
+            <div class="page-header">
+                <h2>Masraf Takibi</h2>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary" onclick="openExpenseModal()">
+                        <i class="fas fa-plus"></i> Yeni Masraf
+                    </button>
+                    <button class="btn btn-outline" onclick="generateBulkReport()">
+                        <i class="fas fa-file-pdf"></i> Toplu Rapor
+                    </button>
+                </div>
+            </div>
+            <div class="form-row" style="margin-bottom:16px;">
+                <div class="form-group">
+                    <select id="expenseFilterCase" onchange="refreshExpenses()">
+                        <option value="">Tüm Dosyalar</option>
+                    </select>
+                </div>
+                <div class="form-group" style="text-align:right;">
+                    <strong>Toplam: <span id="expenseTotal">₺0</span></strong>
+                </div>
+            </div>
+            <div id="expensesList">
+                <p class="empty-state">Henüz masraf kaydı yok.</p>
+            </div>
+
+            <div class="modal" id="expenseModal">
+                <div class="modal-content" style="max-width:500px;">
+                    <div class="modal-header">
+                        <h3>Yeni Masraf</h3>
+                        <button class="modal-close" onclick="$('#expenseModal').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>Masraf Türü</label>
+                            <select id="expType">
+                                <option value="harc">Yargılama Harcı</option>
+                                <option value="posta">Posta / Tebligat</option>
+                                <option value="bilirkisi">Bilirkişi Ücreti</option>
+                                <option value="keşif">Keşif Masrafı</option>
+                                <option value="noter">Noter Masrafı</option>
+                                <option value="yol">Yol / Ulaşım</option>
+                                <option value="konaklama">Konaklama</option>
+                                <option value="tercume">Tercüme</option>
+                                <option value="diger">Diğer</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Açıklama</label>
+                            <input type="text" id="expDesc" placeholder="Masraf açıklaması">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Tutar (₺)</label>
+                                <input type="text" id="expAmount" placeholder="1.500">
+                            </div>
+                            <div class="form-group">
+                                <label>Tarih</label>
+                                <input type="date" id="expDate">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>İlişkili Dosya/Dava</label>
+                            <select id="expCase">
+                                <option value="">Seçiniz...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Fatura/Makbuz Yükle</label>
+                            <input type="file" id="expReceipt" accept=".pdf,.jpg,.png,.jpeg">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick="$('#expenseModal').classList.remove('active')">İptal</button>
+                        <button class="btn btn-primary" onclick="saveExpense()">
+                            <i class="fas fa-save"></i> Kaydet
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: TASKS -->
+        <div class="page" id="page-tasks">
+            <div class="page-header">
+                <h2>Görevler & Hatırlatmalar</h2>
+                <button class="btn btn-primary" onclick="openTaskModal()">
+                    <i class="fas fa-plus"></i> Yeni Görev
+                </button>
+            </div>
+            <div class="contracts-tabs">
+                <button class="tab-btn active" data-tab="tasks-active">Aktif Görevler</button>
+                <button class="tab-btn" data-tab="tasks-completed">Tamamlanan</button>
+                <button class="tab-btn" data-tab="tasks-kanban"><i class="fas fa-columns"></i> Kanban</button>
+            </div>
+            <div class="tab-content active" id="tab-tasks-active">
+                <div id="activeTasksList">
+                    <p class="empty-state">Henüz görev yok.</p>
+                </div>
+            </div>
+            <div class="tab-content" id="tab-tasks-completed">
+                <div id="completedTasksList">
+                    <p class="empty-state">Henüz tamamlanan görev yok.</p>
+                </div>
+            </div>
+            <div class="tab-content" id="tab-tasks-kanban">
+                <div id="kanbanBoard" class="kanban-board">
+                    <!-- JS ile doldurulacak -->
+                </div>
+            </div>
+
+            <div class="modal" id="taskModal">
+                <div class="modal-content" style="max-width:500px;">
+                    <div class="modal-header">
+                        <h3>Yeni Görev</h3>
+                        <button class="modal-close" onclick="$('#taskModal').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>Görev Başlığı</label>
+                            <input type="text" id="taskTitle" placeholder="Örn: Dilekçeyi hazırla">
+                        </div>
+                        <div class="form-group">
+                            <label>Açıklama</label>
+                            <textarea id="taskDesc" rows="3" placeholder="Detaylar..."></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Son Tarih</label>
+                                <input type="date" id="taskDue">
+                            </div>
+                            <div class="form-group">
+                                <label>Öncelik</label>
+                                <select id="taskPriority">
+                                    <option value="low">Düşük</option>
+                                    <option value="medium" selected>Normal</option>
+                                    <option value="high">Yüksek</option>
+                                    <option value="urgent">Acil</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Atanan Kişi</label>
+                                <select id="taskAssignee">
+                                    <option value="">Herkes</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>İlişkili Dosya</label>
+                                <select id="taskRelated">
+                                    <option value="">Yok</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick="$('#taskModal').classList.remove('active')">İptal</button>
+                        <button class="btn btn-primary" onclick="saveTask()">
+                            <i class="fas fa-save"></i> Kaydet
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: TIMESHEET -->
+        <div class="page" id="page-timesheet">
+            <div class="page-header">
+                <h2>Zaman Takibi</h2>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary" onclick="openTimesheetModal()">
+                        <i class="fas fa-plus"></i> Manuel Kayıt
+                    </button>
+                    <button class="btn btn-outline" onclick="generateBulkReport()">
+                        <i class="fas fa-file-pdf"></i> Toplu Rapor
+                    </button>
+                </div>
+            </div>
+
+            <!-- Active Timer -->
+            <div class="form-card" id="timerCard">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <h4 style="margin-bottom:4px;">Kronometre</h4>
+                        <div style="display:flex;gap:10px;align-items:center;">
+                            <select id="timerCase" style="width:250px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:0.85rem;">
+                                <option value="">Dosya seçin...</option>
+                            </select>
+                            <input type="text" id="timerDesc" placeholder="Ne yapıyorsunuz?" style="width:250px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:0.85rem;">
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:16px;">
+                        <div id="timerDisplay" style="font-size:2rem;font-weight:700;font-family:monospace;color:var(--primary);">00:00:00</div>
+                        <button class="btn btn-primary" id="timerStartBtn" onclick="toggleTimer()">
+                            <i class="fas fa-play"></i> Başlat
+                        </button>
+                        <button class="btn btn-outline" id="timerStopBtn" onclick="stopTimer()" style="display:none;">
+                            <i class="fas fa-stop"></i> Kaydet & Durdur
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter & Summary -->
+            <div class="form-row" style="margin-bottom:16px;">
+                <div class="form-group">
+                    <select id="timesheetFilter" onchange="refreshTimesheet()">
+                        <option value="">Tüm Dosyalar</option>
+                    </select>
+                </div>
+                <div class="form-group" style="text-align:right;">
+                    <strong>Toplam: <span id="timesheetTotal">0 saat 0 dk</span></strong>
+                </div>
+            </div>
+            <div id="timesheetList">
+                <p class="empty-state">Henüz zaman kaydı yok.</p>
+            </div>
+
+            <!-- Manual Entry Modal -->
+            <div class="modal" id="timesheetModal">
+                <div class="modal-content" style="max-width:480px;">
+                    <div class="modal-header">
+                        <h3>Manuel Zaman Kaydı</h3>
+                        <button class="modal-close" onclick="$('#timesheetModal').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>İlişkili Dosya</label>
+                            <select id="tsCase"><option value="">Seçiniz...</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Açıklama</label>
+                            <input type="text" id="tsDesc" placeholder="Yapılan iş">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Tarih</label>
+                                <input type="date" id="tsDate">
+                            </div>
+                            <div class="form-group">
+                                <label>Süre (dakika)</label>
+                                <input type="number" id="tsDuration" placeholder="60" min="1">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick="$('#timesheetModal').classList.remove('active')">İptal</button>
+                        <button class="btn btn-primary" onclick="saveTimesheetEntry()"><i class="fas fa-save"></i> Kaydet</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: CONTACTS (Karşı Taraf & İlgili Kişiler) -->
+        <div class="page" id="page-contacts">
+            <div class="page-header">
+                <h2>Karşı Taraf & İlgili Kişiler</h2>
+                <button class="btn btn-primary" onclick="openContactModal()">
+                    <i class="fas fa-plus"></i> Yeni Kişi
+                </button>
+            </div>
+            <div class="form-row" style="margin-bottom:16px;">
+                <div class="form-group">
+                    <input type="text" id="contactSearch" placeholder="Kişi ara..." oninput="refreshContacts()">
+                </div>
+                <div class="form-group">
+                    <select id="contactFilter" onchange="refreshContacts()">
+                        <option value="">Tüm Roller</option>
+                        <option value="avukat">Karşı Taraf Avukatı</option>
+                        <option value="hakim">Hakim</option>
+                        <option value="bilirkisi">Bilirkişi</option>
+                        <option value="arabulucu">Arabulucu</option>
+                        <option value="noter">Noter</option>
+                        <option value="tanik">Tanık</option>
+                        <option value="diger">Diğer</option>
+                    </select>
+                </div>
+            </div>
+            <div id="contactsList">
+                <p class="empty-state">Henüz kişi kaydı yok.</p>
+            </div>
+
+            <div class="modal" id="contactModal">
+                <div class="modal-content" style="max-width:520px;">
+                    <div class="modal-header">
+                        <h3>Kişi Ekle/Düzenle</h3>
+                        <button class="modal-close" onclick="$('#contactModal').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Ad Soyad</label>
+                                <input type="text" id="ctName" placeholder="Ad Soyad">
+                            </div>
+                            <div class="form-group">
+                                <label>Rol</label>
+                                <select id="ctRole">
+                                    <option value="avukat">Karşı Taraf Avukatı</option>
+                                    <option value="hakim">Hakim</option>
+                                    <option value="bilirkisi">Bilirkişi</option>
+                                    <option value="arabulucu">Arabulucu</option>
+                                    <option value="noter">Noter</option>
+                                    <option value="tanik">Tanık</option>
+                                    <option value="diger">Diğer</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Kurum/Büro</label>
+                                <input type="text" id="ctOrg" placeholder="Kurum adı">
+                            </div>
+                            <div class="form-group">
+                                <label>Telefon</label>
+                                <input type="text" id="ctPhone" placeholder="Telefon">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>E-posta</label>
+                            <input type="email" id="ctEmail" placeholder="E-posta">
+                        </div>
+                        <div class="form-group">
+                            <label>İlişkili Davalar</label>
+                            <select id="ctCases" multiple style="height:80px;"><option value="">Seçiniz...</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Notlar</label>
+                            <textarea id="ctNotes" rows="3" placeholder="Bu kişi hakkında notlar..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick="$('#contactModal').classList.remove('active')">İptal</button>
+                        <button class="btn btn-primary" onclick="saveContact()"><i class="fas fa-save"></i> Kaydet</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: CASE FILES (DOSYA TAKİBİ) -->
+        <div class="page" id="page-case-files">
+            <div class="page-header">
+                <h2>Dosya Takibi</h2>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary" onclick="openCaseFileModal()">
+                        <i class="fas fa-plus"></i> Yeni Dosya
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-row" style="margin-bottom:16px;">
+                <div class="form-group" style="flex:2;">
+                    <input type="text" id="caseFileSearch" placeholder="Dosya ara (esas no, müvekkil, konu...)" oninput="refreshCaseFiles()">
+                </div>
+                <div class="form-group">
+                    <select id="caseFileFilterStatus" onchange="refreshCaseFiles()">
+                        <option value="">Tüm Durumlar</option>
+                        <option value="active">Devam Eden</option>
+                        <option value="closed">Kapanan</option>
+                        <option value="appeal">İstinaf/Temyiz</option>
+                        <option value="enforcement">İcra</option>
+                        <option value="mediation">Arabuluculuk</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <select id="caseFileFilterType" onchange="refreshCaseFiles()">
+                        <option value="">Tüm Türler</option>
+                        <option value="hukuk">Hukuk</option>
+                        <option value="ceza">Ceza</option>
+                        <option value="idare">İdare</option>
+                        <option value="is">İş</option>
+                        <option value="icra">İcra</option>
+                        <option value="ticaret">Ticaret</option>
+                        <option value="aile">Aile</option>
+                        <option value="tuketici">Tüketici</option>
+                        <option value="arabuluculuk">Arabuluculuk</option>
+                        <option value="diger">Diğer</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="caseFileStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;"></div>
+
+            <div id="caseFilesList">
+                <p class="empty-state">Henüz dosya kaydı yok. Yeni dosya ekleyin.</p>
+            </div>
+
+            <!-- Case File Modal -->
+            <div class="modal" id="caseFileModal">
+                <div class="modal-content" style="max-width:650px;">
+                    <div class="modal-header">
+                        <h3 id="caseFileModalTitle">Yeni Dosya</h3>
+                        <button class="modal-close" onclick="$('#caseFileModal').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Dosya Adı / Konusu *</label>
+                                <input type="text" id="cfTitle" placeholder="Örn: Yılmaz v. ABC Ltd. - Alacak">
+                            </div>
+                            <div class="form-group">
+                                <label>Dosya Türü</label>
+                                <select id="cfType">
+                                    <option value="hukuk">Hukuk</option>
+                                    <option value="ceza">Ceza</option>
+                                    <option value="idare">İdare</option>
+                                    <option value="is">İş</option>
+                                    <option value="icra">İcra</option>
+                                    <option value="ticaret">Ticaret</option>
+                                    <option value="aile">Aile</option>
+                                    <option value="tuketici">Tüketici</option>
+                                    <option value="arabuluculuk">Arabuluculuk</option>
+                                    <option value="diger">Diğer</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Durum</label>
+                                <select id="cfStatus">
+                                    <option value="active">Devam Eden</option>
+                                    <option value="closed">Kapanan</option>
+                                    <option value="appeal">İstinaf/Temyiz</option>
+                                    <option value="enforcement">İcra</option>
+                                    <option value="mediation">Arabuluculuk</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Müvekkil</label>
+                                <input type="text" id="cfClient" placeholder="Müvekkil adı" list="clientAutoList">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Öncelik</label>
+                                <select id="cfPriority">
+                                    <option value="normal">Normal</option>
+                                    <option value="high">Acil</option>
+                                    <option value="low">Düşük</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Atanan Avukat</label>
+                                <select id="cfAssignedLawyer">
+                                    <option value="">Seçin</option>
+                                </select>
+                            </div>
+                        </div>
+                        <hr style="border:none;border-top:1px solid var(--border);margin:12px 0;">
+                        <h4 style="margin-bottom:8px;font-size:0.95rem;">Dosya Numaraları</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Esas No</label>
+                                <input type="text" id="cfEsasNo" placeholder="2024/123">
+                            </div>
+                            <div class="form-group">
+                                <label>Karar No</label>
+                                <input type="text" id="cfKararNo" placeholder="2024/456">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>İstinaf Esas No</label>
+                                <input type="text" id="cfIstinafEsasNo" placeholder="2024/789">
+                            </div>
+                            <div class="form-group">
+                                <label>İstinaf Karar No</label>
+                                <input type="text" id="cfIstinafKararNo" placeholder="">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Temyiz Esas No</label>
+                                <input type="text" id="cfTemyizEsasNo" placeholder="">
+                            </div>
+                            <div class="form-group">
+                                <label>Temyiz Karar No</label>
+                                <input type="text" id="cfTemyizKararNo" placeholder="">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>İcra Dosya No</label>
+                                <input type="text" id="cfIcraNo" placeholder="">
+                            </div>
+                            <div class="form-group">
+                                <label>Arabuluculuk No</label>
+                                <input type="text" id="cfArabuluculukNo" placeholder="">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Mahkeme / Kurum</label>
+                                <input type="text" id="cfCourt" placeholder="Örn: İstanbul 5. Asliye Hukuk">
+                            </div>
+                            <div class="form-group">
+                                <label>Sorumlu Avukat</label>
+                                <select id="cfLawyer">
+                                    <option value="">Seçin</option>
+                                    <option value="1">Avukat 1</option>
+                                    <option value="2">Avukat 2</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Karşı Taraf</label>
+                                <input type="text" id="cfOpponent" placeholder="Karşı taraf adı">
+                            </div>
+                            <div class="form-group">
+                                <label>Karşı Taraf Vekili</label>
+                                <input type="text" id="cfOpponentLawyer" placeholder="">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Notlar</label>
+                            <textarea id="cfNotes" rows="3" placeholder="Dosya ile ilgili notlar..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-outline" onclick="$('#caseFileModal').classList.remove('active')">İptal</button>
+                        <button class="btn btn-primary" onclick="saveCaseFile()">Kaydet</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: HEARINGS & DEADLINES -->
+        <div class="page" id="page-hearings">
+            <div class="page-header">
+                <h2>Duruşma & Süre Takibi</h2>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary" onclick="addHearing()">
+                        <i class="fas fa-plus"></i> Yeni Duruşma
+                    </button>
+                    <button class="btn btn-outline" onclick="addDeadline()">
+                        <i class="fas fa-clock"></i> Yeni Süre
+                    </button>
+                </div>
+            </div>
+
+            <div class="contracts-tabs">
+                <button class="tab-btn active" data-tab="hearings-tab">
+                    <i class="fas fa-gavel"></i> Duruşmalar
+                </button>
+                <button class="tab-btn" data-tab="deadlines-tab">
+                    <i class="fas fa-clock"></i> Yasal Süreler
+                </button>
+                <button class="tab-btn" data-tab="calendar-tab">
+                    <i class="fas fa-calendar-alt"></i> Takvim Görünümü
+                </button>
+            </div>
+
+            <div class="tab-content active" id="tab-hearings-tab">
+                <div id="hearingsList">
+                    <p class="empty-state">Henüz duruşma kaydı yok. Yeni duruşma ekleyin.</p>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-deadlines-tab">
+                <div id="deadlinesList">
+                    <p class="empty-state">Henüz yasal süre kaydı yok. Yeni süre ekleyin.</p>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-calendar-tab">
+                <div id="calendarView" class="calendar-grid">
+                    <!-- JS ile doldurulacak -->
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: PETITIONS (DİLEKÇE ŞABLONLARI) -->
+        <div class="page" id="page-petitions">
+            <div class="page-header">
+                <h2>Dilekçe Şablonları</h2>
+                <button class="btn btn-primary" onclick="openPetitionEditor()">
+                    <i class="fas fa-plus"></i> Boş Dilekçe
+                </button>
+            </div>
+            <div class="dashboard-grid" id="petitionTemplatesList">
+                <!-- JS ile doldurulacak -->
+            </div>
+            <!-- Dilekçe Düzenleyici Modal -->
+            <div class="modal" id="petitionEditorModal">
+                <div class="modal-content" style="max-width:800px;max-height:90vh;">
+                    <div class="modal-header">
+                        <h3 id="petitionEditorTitle">Dilekçe Düzenle</h3>
+                        <button class="modal-close" onclick="$('#petitionEditorModal').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body" style="overflow-y:auto;max-height:calc(90vh - 130px);">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Dilekçe Türü</label>
+                                <select id="petitionType">
+                                    <option value="dava">Dava Dilekçesi</option>
+                                    <option value="cevap">Cevap Dilekçesi</option>
+                                    <option value="itiraz">İtiraz Dilekçesi</option>
+                                    <option value="istinaf">İstinaf Başvuru Dilekçesi</option>
+                                    <option value="temyiz">Temyiz Dilekçesi</option>
+                                    <option value="icra-itiraz">İcra İtiraz Dilekçesi</option>
+                                    <option value="arabuluculuk">Arabuluculuk Başvuru Dilekçesi</option>
+                                    <option value="beyan">Beyan Dilekçesi</option>
+                                    <option value="feragat">Feragat Dilekçesi</option>
+                                    <option value="ihtarname">İhtarname</option>
+                                    <option value="sulh">Sulh Protokolü</option>
+                                    <option value="bilirkisi">Bilirkişi Raporu İtiraz</option>
+                                    <option value="muzekkere">Müzekkere Taslağı</option>
+                                    <option value="temlik">Temlik Sözleşmesi</option>
+                                    <option value="nda">Gizlilik Sözleşmesi (NDA)</option>
+                                    <option value="tensip">Tensip Zaptı Şablonu</option>
+                                    <option value="bilgilendirme">Müvekkil Bilgilendirme Mektubu</option>
+                                    <option value="custom">Özel Dilekçe</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Müvekkil</label>
+                                <input type="text" id="petitionClient" placeholder="Müvekkil adı" list="petitionClientList">
+                                <datalist id="petitionClientList"></datalist>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Mahkeme / Kurum</label>
+                                <input type="text" id="petitionCourt" placeholder="Örn: İstanbul 5. Asliye Hukuk Mahkemesi">
+                            </div>
+                            <div class="form-group">
+                                <label>Esas No</label>
+                                <input type="text" id="petitionEsasNo" placeholder="2026/123">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Karşı Taraf</label>
+                                <input type="text" id="petitionOpponent" placeholder="Davalı / Karşı taraf adı">
+                            </div>
+                            <div class="form-group">
+                                <label>Konu</label>
+                                <input type="text" id="petitionSubject" placeholder="Dilekçe konusu">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Açıklamalar / Metin</label>
+                            <textarea id="petitionBody" rows="14" placeholder="Dilekçe metnini buraya yazın..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Talep (Sonuç ve İstem)</label>
+                            <textarea id="petitionRequest" rows="4" placeholder="Netice-i talep..."></textarea>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button class="btn btn-primary" onclick="savePetition()">
+                                <i class="fas fa-save"></i> Kaydet
+                            </button>
+                            <button class="btn btn-outline" onclick="fillPetitionTemplate()">
+                                <i class="fas fa-magic"></i> Şablondan Doldur
+                            </button>
+                            <button class="btn btn-outline" onclick="exportPetitionPDF()">
+                                <i class="fas fa-file-pdf"></i> PDF İndir
+                            </button>
+                            <button class="btn btn-outline" onclick="exportPetitionWord()">
+                                <i class="fas fa-file-word"></i> Word İndir
+                            </button>
+                            <button class="btn btn-outline" id="btnImprovePetition" onclick="improvePetition()" style="border-color:var(--accent3);color:var(--accent3);">
+                                <i class="fas fa-magic"></i> AI İyileştir
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: TOOLS (HESAPLAMA ARAÇLARI) -->
+        <div class="page" id="page-tools">
+            <div class="page-header">
+                <h2>Hesaplama Araçları</h2>
+            </div>
+
+            <div class="contracts-tabs">
+                <button class="tab-btn active" data-tab="interest-tab">
+                    <i class="fas fa-percentage"></i> Yasal Faiz Hesaplayıcı
+                </button>
+                <button class="tab-btn" data-tab="billing-tab">
+                    <i class="fas fa-file-invoice-dollar"></i> Masraf Faturalama
+                </button>
+                <button class="tab-btn" data-tab="profitloss-tab">
+                    <i class="fas fa-chart-line"></i> Müvekkil Kâr/Zarar
+                </button>
+                <button class="tab-btn" data-tab="barotarife-tab">
+                    <i class="fas fa-balance-scale-right"></i> Baro Ücret Tarifesi
+                </button>
+                <button class="tab-btn" data-tab="ocr-tab">
+                    <i class="fas fa-camera"></i> Belge OCR
+                </button>
+                <button class="tab-btn" data-tab="voicenote-tab">
+                    <i class="fas fa-microphone"></i> Sesli Not
+                </button>
+                <button class="tab-btn" data-tab="ai-tab">
+                    <i class="fas fa-robot"></i> AI Dilekçe
+                </button>
+                <button class="tab-btn" data-tab="ai-predict-tab">
+                    <i class="fas fa-brain"></i> AI Tahmin
+                </button>
+                <button class="tab-btn" data-tab="ai-summary-tab">
+                    <i class="fas fa-file-alt"></i> AI Özet
+                </button>
+                <button class="tab-btn" data-tab="ai-research-tab">
+                    <i class="fas fa-search"></i> AI Araştırma
+                </button>
+                <button class="tab-btn" data-tab="ai-redline-tab">
+                    <i class="fas fa-exchange-alt"></i> AI Redline
+                </button>
+            </div>
+
+            <!-- Yasal Faiz Hesaplayıcı -->
+            <div class="tab-content active" id="tab-interest-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;">Yasal Faiz Hesaplayıcı</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Asıl Alacak Tutarı</label>
+                            <input type="number" id="interestPrincipal" placeholder="100000" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>Para Birimi</label>
+                            <select id="interestCurrency">
+                                <option value="TRY">TL (₺)</option>
+                                <option value="USD">USD ($)</option>
+                                <option value="EUR">EUR (€)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Başlangıç Tarihi</label>
+                            <input type="date" id="interestStartDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Bitiş Tarihi</label>
+                            <input type="date" id="interestEndDate">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Faiz Türü</label>
+                            <select id="interestType">
+                                <option value="yasal">Yasal Faiz</option>
+                                <option value="ticari">Ticari Faiz (Avans)</option>
+                                <option value="custom">Özel Oran</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Özel Faiz Oranı (% yıllık)</label>
+                            <input type="number" id="interestCustomRate" placeholder="24" step="0.01" disabled>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="calculateInterest()">
+                        <i class="fas fa-calculator"></i> Hesapla
+                    </button>
+                    <div id="interestResult" style="margin-top:20px;display:none;">
+                        <!-- JS ile doldurulacak -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Masraf Faturalama -->
+            <div class="tab-content" id="tab-billing-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;">Masraf Faturalama</h3>
+                    <p class="form-desc">Müvekkile yansıtılacak masrafları seçin ve fatura oluşturun.</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Müvekkil</label>
+                            <select id="billingClient" onchange="loadBillingExpenses()">
+                                <option value="">Müvekkil seçin...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Durum Filtresi</label>
+                            <select id="billingFilter" onchange="loadBillingExpenses()">
+                                <option value="unbilled">Faturalanmamış</option>
+                                <option value="billed">Faturalanmış</option>
+                                <option value="all">Tümü</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="billingExpensesList" style="margin-top:16px;">
+                        <p class="empty-state">Müvekkil seçin.</p>
+                    </div>
+                    <div id="billingActions" style="margin-top:16px;display:none;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+                            <strong>Seçili Toplam: <span id="billingTotal">₺0</span></strong>
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn btn-primary" onclick="markAsBilled()">
+                                    <i class="fas fa-check"></i> Faturalandı Olarak İşaretle
+                                </button>
+                                <button class="btn btn-outline" onclick="exportBillingPDF()">
+                                    <i class="fas fa-file-pdf"></i> Fatura PDF
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Müvekkil Kâr/Zarar -->
+            <div class="tab-content" id="tab-profitloss-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;">Müvekkil Bazlı Kâr/Zarar Analizi</h3>
+                    <p class="form-desc">Her müvekkil için gelir, masraf ve zaman bazlı kârlılık hesaplaması.</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Saatlik Ücret Tabanı (₺)</label>
+                            <input type="number" id="plHourlyRate" value="3000" step="100">
+                        </div>
+                        <div class="form-group">
+                            <label>Dönem</label>
+                            <select id="plPeriod" onchange="calculateProfitLoss()">
+                                <option value="all">Tüm Zamanlar</option>
+                                <option value="year">Bu Yıl</option>
+                                <option value="month">Bu Ay</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="calculateProfitLoss()">
+                        <i class="fas fa-chart-line"></i> Analiz Et
+                    </button>
+                    <div id="profitLossResult" style="margin-top:20px;">
+                        <!-- JS ile doldurulacak -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Baro Ücret Tarifesi -->
+            <div class="tab-content" id="tab-barotarife-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;">Baro Asgari Ücret Tarifesi Karşılaştırma</h3>
+                    <p class="form-desc">Belirlediğiniz ücreti Baro asgari ücret tarifesiyle karşılaştırın.</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Dava Türü</label>
+                            <select id="baroTarifeType" onchange="compareFeeWithBaro()">
+                                <option value="hukuk-durusmasiz">Hukuk - Duruşmasız</option>
+                                <option value="hukuk-durusmali">Hukuk - Duruşmalı</option>
+                                <option value="ceza-durusmasiz">Ceza - Duruşmasız</option>
+                                <option value="ceza-durusmali">Ceza - Duruşmalı</option>
+                                <option value="is-durusmali">İş - Duruşmalı</option>
+                                <option value="icra">İcra Takibi</option>
+                                <option value="idare">İdare Mahkemesi</option>
+                                <option value="arabuluculuk">Arabuluculuk</option>
+                                <option value="danismanlik">Hukuki Danışmanlık (saatlik)</option>
+                                <option value="sozlesme">Sözleşme İnceleme</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Talep Ettiğiniz Ücret (₺)</label>
+                            <input type="number" id="baroTarifeAmount" placeholder="50000" onchange="compareFeeWithBaro()">
+                        </div>
+                    </div>
+                    <div id="baroTarifeResult" style="margin-top:16px;"></div>
+                </div>
+            </div>
+
+            <!-- Belge OCR -->
+            <div class="tab-content" id="tab-ocr-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;">Belge OCR (Görüntüden Metin Çıkarma)</h3>
+                    <p class="form-desc">Fotoğraf veya taranmış belgeden metin çıkarın. Dosyayı sürükleyip bırakabilirsiniz.</p>
+                    <div class="form-group">
+                        <label>Görüntü Yükle</label>
+                        <input type="file" id="ocrFileInput" accept="image/*" onchange="performOCR(this)">
+                    </div>
+                    <div id="ocrProgress" style="display:none;margin:12px 0;">
+                        <div style="background:var(--border);border-radius:4px;overflow:hidden;">
+                            <div id="ocrProgressBar" style="height:6px;background:var(--primary);width:0%;transition:width 0.3s;"></div>
+                        </div>
+                        <div style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;" id="ocrStatus">İşleniyor...</div>
+                    </div>
+                    <div id="ocrResult" style="display:none;margin-top:16px;">
+                        <label>Çıkarılan Metin:</label>
+                        <textarea id="ocrText" rows="12" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:0.88rem;margin-top:8px;"></textarea>
+                        <div style="display:flex;gap:8px;margin-top:8px;">
+                            <button class="btn btn-primary" onclick="copyOCRText()"><i class="fas fa-copy"></i> Kopyala</button>
+                            <button class="btn btn-outline" onclick="useOCRInPetition()"><i class="fas fa-file-contract"></i> Dilekçeye Aktar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sesli Not -->
+            <div class="tab-content" id="tab-voicenote-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;">Sesli Not Kaydet</h3>
+                    <p class="form-desc">Sesli notlarınızı kaydedin ve dosyalara bağlayın.</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>İlgili Dosya</label>
+                            <select id="voiceCaseFile">
+                                <option value="">Dosya seçin (opsiyonel)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Açıklama</label>
+                            <input type="text" id="voiceDescription" placeholder="Not açıklaması...">
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:16px;margin:20px 0;">
+                        <button class="btn btn-primary" id="voiceRecordBtn" onclick="toggleVoiceRecording()">
+                            <i class="fas fa-microphone"></i> Kayda Başla
+                        </button>
+                        <div id="voiceTimer" style="font-size:1.5rem;font-weight:700;font-family:monospace;color:var(--primary);">00:00</div>
+                        <div id="voiceRecIndicator" style="display:none;width:12px;height:12px;border-radius:50%;background:var(--accent);animation:pulse 1s infinite;"></div>
+                    </div>
+                    <div id="voiceNotesList" style="margin-top:16px;">
+                        <p class="empty-state">Henüz sesli not yok.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Dilekçe -->
+            <div class="tab-content" id="tab-ai-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;"><i class="fas fa-robot" style="color:var(--primary);"></i> AI Dilekçe Taslağı (Gemini 2.5 Flash)</h3>
+                    <p class="form-desc">Yapay zeka ile dilekçe taslağı oluşturun. Gemini 2.5 Flash kullanır.</p>
+                    <div class="form-group">
+                        <label>Gemini API Anahtarı</label>
+                        <input type="password" id="geminiApiKey" placeholder="API anahtarınızı girin..." onchange="saveGeminiKey(this.value)">
+                        <small style="color:var(--text-secondary);">Google AI Studio'dan ücretsiz alabilirsiniz: <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com</a></small>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Dilekçe Türü</label>
+                            <select id="aiPetitionType">
+                                <option value="dava">Dava Dilekçesi</option>
+                                <option value="cevap">Cevap Dilekçesi</option>
+                                <option value="itiraz">İtiraz Dilekçesi</option>
+                                <option value="istinaf">İstinaf Dilekçesi</option>
+                                <option value="ihtarname">İhtarname</option>
+                                <option value="sulh">Sulh Protokolü</option>
+                                <option value="custom">Özel</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Hukuki Alan</label>
+                            <select id="aiLegalArea">
+                                <option value="ticaret">Ticaret Hukuku</option>
+                                <option value="is">İş Hukuku</option>
+                                <option value="aile">Aile Hukuku</option>
+                                <option value="ceza">Ceza Hukuku</option>
+                                <option value="icra">İcra Hukuku</option>
+                                <option value="idare">İdare Hukuku</option>
+                                <option value="tuketici">Tüketici Hukuku</option>
+                                <option value="diger">Diğer</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Durum Açıklaması</label>
+                        <textarea id="aiPrompt" rows="5" placeholder="Olayı ve durumu kısaca anlatın. Örn: Müvekkilim ABC Ltd. Şti., XYZ A.Ş.'den 500.000 TL alacağını tahsil edememektedir. 01.01.2024 tarihli sözleşmeye göre..."></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="generateAIDraft()" id="aiGenerateBtn">
+                        <i class="fas fa-magic"></i> Taslak Oluştur
+                    </button>
+                    <div id="aiResult" style="display:none;margin-top:20px;">
+                        <label>AI Taslağı:</label>
+                        <textarea id="aiResultText" rows="15" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font);font-size:0.88rem;margin-top:8px;"></textarea>
+                        <div style="display:flex;gap:8px;margin-top:8px;">
+                            <button class="btn btn-primary" onclick="useAIInPetition()"><i class="fas fa-file-contract"></i> Dilekçeye Aktar</button>
+                            <button class="btn btn-outline" onclick="navigator.clipboard.writeText($('#aiResultText').value); toast('Kopyalandı','success');"><i class="fas fa-copy"></i> Kopyala</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Dava Sonuç Tahmini -->
+            <div class="tab-content" id="tab-ai-predict-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;"><i class="fas fa-brain" style="color:var(--accent3);"></i> AI Dava Sonuç Tahmini</h3>
+                    <p class="form-desc">Yapay zeka ile dava sonucunu tahmin edin. Gemini API kullanır. <strong>Bu bir tahmindir, hukuki tavsiye değildir.</strong></p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Dava Türü</label>
+                            <select id="predictCaseType">
+                                <option value="hukuk">Hukuk Davası</option>
+                                <option value="ceza">Ceza Davası</option>
+                                <option value="is">İş Davası</option>
+                                <option value="aile">Aile Hukuku</option>
+                                <option value="icra">İcra Takibi</option>
+                                <option value="idare">İdari Dava</option>
+                                <option value="ticaret">Ticaret Davası</option>
+                                <option value="tuketici">Tüketici Davası</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Mahkeme</label>
+                            <input type="text" id="predictCourt" placeholder="Örn: Ankara 3. Asliye Hukuk">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Tarafınız</label>
+                            <select id="predictSide">
+                                <option value="davaci">Davacı</option>
+                                <option value="davali">Davalı</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Dava Değeri (₺)</label>
+                            <input type="number" id="predictAmount" placeholder="Opsiyonel">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Güçlü Yanlarınız (delil, tanık, belge vb.)</label>
+                        <textarea id="predictStrengths" rows="3" placeholder="Örn: Yazılı sözleşme mevcut, 3 tanık var, banka dekontları sunuldu..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Zayıf Yanlarınız / Riskler</label>
+                        <textarea id="predictWeaknesses" rows="3" placeholder="Örn: Sözleşmede süre belirsiz, zamanaşımı riski var..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Dava Özeti</label>
+                        <textarea id="predictSummary" rows="4" placeholder="Davanın kısa özeti..."></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="predictCaseOutcome()" id="predictBtn">
+                        <i class="fas fa-brain"></i> Tahmin Et
+                    </button>
+                    <div id="predictResult" style="display:none;margin-top:20px;">
+                        <!-- JS ile doldurulacak -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Belge İnceleme & Özetleme -->
+            <div class="tab-content" id="tab-ai-summary-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;"><i class="fas fa-file-alt" style="color:var(--primary);"></i> AI Belge İnceleme & Özetleme</h3>
+                    <p class="form-desc">Belge metnini yapıştırın veya OCR'den aktarın, AI özetlesin ve riskleri işaretlesin.</p>
+                    <div class="form-group">
+                        <label>Belge Metni</label>
+                        <textarea id="aiSummaryInput" rows="10" placeholder="Sözleşme, dilekçe veya herhangi bir hukuki belgenin metnini buraya yapıştırın..."></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Analiz Türü</label>
+                            <select id="aiSummaryType">
+                                <option value="ozet">Genel Özet</option>
+                                <option value="risk">Risk Analizi</option>
+                                <option value="madde">Madde Madde Analiz</option>
+                                <option value="karsilastir">Mevzuat Uyumluluk Kontrolü</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="display:flex;align-items:flex-end;">
+                            <button class="btn btn-outline btn-sm" onclick="loadOCRToSummary()" style="margin-bottom:4px;">
+                                <i class="fas fa-camera"></i> OCR'den Aktar
+                            </button>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="analyzeDocument()" id="aiSummaryBtn">
+                        <i class="fas fa-magic"></i> Analiz Et
+                    </button>
+                    <div id="aiSummaryResult" style="display:none;margin-top:20px;"></div>
+                </div>
+            </div>
+
+            <!-- AI Hukuki Araştırma Asistanı -->
+            <div class="tab-content" id="tab-ai-research-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;"><i class="fas fa-search" style="color:var(--accent2);"></i> AI Hukuki Araştırma Asistanı</h3>
+                    <p class="form-desc">Doğal dille hukuki soru sorun, AI ilgili mevzuat ve içtihatları araştırsın.</p>
+                    <div class="form-group">
+                        <label>Hukuki Sorunuz</label>
+                        <textarea id="aiResearchQuery" rows="4" placeholder="Örn: İş sözleşmesinin haklı nedenle feshi halinde işçinin kıdem tazminatı hakkı var mıdır? Yargıtay kararları nelerdir?"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Hukuk Alanı</label>
+                            <select id="aiResearchArea">
+                                <option value="genel">Genel</option>
+                                <option value="is">İş Hukuku</option>
+                                <option value="ticaret">Ticaret Hukuku</option>
+                                <option value="ceza">Ceza Hukuku</option>
+                                <option value="aile">Aile Hukuku</option>
+                                <option value="icra">İcra İflas</option>
+                                <option value="idare">İdare Hukuku</option>
+                                <option value="anayasa">Anayasa Hukuku</option>
+                                <option value="medeni">Medeni Hukuk</option>
+                                <option value="borclar">Borçlar Hukuku</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Detay Seviyesi</label>
+                            <select id="aiResearchDepth">
+                                <option value="kisa">Kısa Yanıt</option>
+                                <option value="detayli" selected>Detaylı Analiz</option>
+                                <option value="akademik">Akademik Düzey</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="performLegalResearch()" id="aiResearchBtn">
+                        <i class="fas fa-search"></i> Araştır
+                    </button>
+                    <div id="aiResearchResult" style="display:none;margin-top:20px;"></div>
+                    <div id="aiResearchHistory" style="margin-top:20px;"></div>
+                </div>
+            </div>
+
+            <!-- AI Sözleşme Redlining -->
+            <div class="tab-content" id="tab-ai-redline-tab">
+                <div class="form-card">
+                    <h3 style="margin-bottom:16px;"><i class="fas fa-exchange-alt" style="color:var(--accent);"></i> AI Sözleşme Redlining</h3>
+                    <p class="form-desc">İki sözleşme metnini karşılaştırın, farkları ve riskleri AI ile tespit edin.</p>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label>Orijinal Metin</label>
+                            <textarea id="redlineOriginal" rows="10" placeholder="Orijinal sözleşme metnini yapıştırın..." style="font-size:0.82rem;"></textarea>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label>Revize Metin</label>
+                            <textarea id="redlineRevised" rows="10" placeholder="Karşı tarafın önerdiği/değiştirilmiş metni yapıştırın..." style="font-size:0.82rem;"></textarea>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="performRedlineAnalysis()" id="redlineBtn">
+                        <i class="fas fa-exchange-alt"></i> Karşılaştır & Analiz Et
+                    </button>
+                    <div id="redlineResult" style="display:none;margin-top:20px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: SETTINGS -->
+        <div class="page" id="page-settings">
+            <div class="form-card">
+                <h2>Büro Bilgileri</h2>
+                <p class="form-desc">Tekliflerde ve sözleşmelerde kullanılacak bilgiler.</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Büro / Firma Adı</label>
+                        <input type="text" id="firmName" placeholder="Örn: Yılmaz & Kaya Hukuk Bürosu">
+                    </div>
+                    <div class="form-group">
+                        <label>Baro Kaydı</label>
+                        <input type="text" id="barAssociation" placeholder="Örn: İstanbul Barosu">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Adres</label>
+                        <textarea id="firmAddress" rows="2" placeholder="Büro adresi..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Telefon</label>
+                        <input type="text" id="firmPhone" placeholder="+90 212 ...">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>E-posta</label>
+                        <input type="email" id="firmEmail" placeholder="info@firma.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Web Sitesi</label>
+                        <input type="text" id="firmWebsite" placeholder="www.firma.com">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Firma Logosu (URL veya Base64)</label>
+                    <input type="text" id="firmLogo" placeholder="Logo URL'si">
+                </div>
+                <button class="btn btn-primary" id="saveSettingsBtn">
+                    <i class="fas fa-save"></i> Ayarları Kaydet
+                </button>
+            </div>
+
+            <!-- Avukat Profilleri -->
+            <div class="form-card" style="margin-top:20px;">
+                <h2>Avukat Profilleri</h2>
+                <p class="form-desc">Bürodaki avukatların detaylı profil bilgileri.</p>
+                <div id="lawyerProfilesList"></div>
+                <button class="btn btn-outline" onclick="openLawyerProfileModal()" style="margin-top:12px;">
+                    <i class="fas fa-plus"></i> Yeni Avukat Profili
+                </button>
+            </div>
+
+            <!-- Avukat Profili Modal -->
+            <div class="modal" id="lawyerProfileModal">
+                <div class="modal-content" style="max-width:600px;">
+                    <div class="modal-header">
+                        <h3 id="lawyerProfileModalTitle">Avukat Profili</h3>
+                        <button class="modal-close" onclick="$('#lawyerProfileModal').classList.remove('active')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Ad Soyad *</label>
+                                <input type="text" id="lpName" placeholder="Av. Ad Soyad">
+                            </div>
+                            <div class="form-group">
+                                <label>Unvan</label>
+                                <input type="text" id="lpTitle" placeholder="Örn: Kurucu Ortak">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Baro</label>
+                                <input type="text" id="lpBar" placeholder="Örn: İstanbul Barosu">
+                            </div>
+                            <div class="form-group">
+                                <label>Sicil No</label>
+                                <input type="text" id="lpBarNo" placeholder="Baro sicil numarası">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>E-posta</label>
+                                <input type="email" id="lpEmail" placeholder="avukat@firma.com">
+                            </div>
+                            <div class="form-group">
+                                <label>Telefon</label>
+                                <input type="text" id="lpPhone" placeholder="+90 5XX...">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Eğitim</label>
+                            <input type="text" id="lpEducation" placeholder="Örn: İstanbul Üniversitesi Hukuk Fakültesi, 2015">
+                        </div>
+                        <div class="form-group">
+                            <label>Uzmanlık Alanları</label>
+                            <input type="text" id="lpExpertise" placeholder="Örn: Ticaret Hukuku, Şirketler Hukuku, M&A">
+                        </div>
+                        <div class="form-group">
+                            <label>Deneyim (Yıl)</label>
+                            <input type="number" id="lpExperience" placeholder="10">
+                        </div>
+                        <div class="form-group">
+                            <label>Biyografi</label>
+                            <textarea id="lpBio" rows="4" placeholder="Kısa biyografi..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Profil Fotoğrafı (URL)</label>
+                            <input type="text" id="lpPhoto" placeholder="Fotoğraf URL'si veya base64">
+                        </div>
+                        <div class="form-group">
+                            <label>Yabancı Diller</label>
+                            <input type="text" id="lpLanguages" placeholder="Örn: İngilizce (İleri), Almanca (Orta)">
+                        </div>
+                        <div class="form-group">
+                            <label>Sertifikalar / Üyelikler</label>
+                            <textarea id="lpCertificates" rows="2" placeholder="Örn: RICS, IBA, ICC üyeliği"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Saatlik Ücret (₺)</label>
+                            <input type="number" id="lpHourlyRate" placeholder="3000">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-outline" onclick="$('#lawyerProfileModal').classList.remove('active')">İptal</button>
+                        <button class="btn btn-primary" onclick="saveLawyerProfile()">Kaydet</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PIN Değiştirme -->
+            <div class="form-card" style="margin-top:20px;">
+                <h2><i class="fas fa-key" style="margin-right:8px;color:var(--primary);"></i>PIN Değiştirme</h2>
+                <p class="form-desc">Giriş PIN kodunuzu değiştirin.</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Mevcut PIN</label>
+                        <input type="password" id="currentPinInput" maxlength="4" placeholder="****" style="letter-spacing:8px;text-align:center;font-size:1.2rem;">
+                    </div>
+                    <div class="form-group">
+                        <label>Yeni PIN (4 haneli)</label>
+                        <input type="password" id="newPinInput" maxlength="4" placeholder="****" style="letter-spacing:8px;text-align:center;font-size:1.2rem;">
+                    </div>
+                    <div class="form-group">
+                        <label>Yeni PIN (Tekrar)</label>
+                        <input type="password" id="confirmPinInput" maxlength="4" placeholder="****" style="letter-spacing:8px;text-align:center;font-size:1.2rem;">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="changePin()">
+                    <i class="fas fa-save"></i> PIN Değiştir
+                </button>
+            </div>
+
+            <!-- Otomatik Yedekleme -->
+            <div class="form-card" style="margin-top:20px;">
+                <h2><i class="fas fa-shield-alt" style="margin-right:8px;color:var(--accent2);"></i>Otomatik Yedekleme</h2>
+                <p class="form-desc">Verileriniz belirlediğiniz aralıkta otomatik olarak yedeklenir.</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Yedekleme Sıklığı</label>
+                        <select id="autoBackupInterval" onchange="saveAutoBackupSettings()">
+                            <option value="0">Kapalı</option>
+                            <option value="30">Her 30 dakika</option>
+                            <option value="60">Her saat</option>
+                            <option value="240">Her 4 saat</option>
+                            <option value="1440">Günlük</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Maksimum Yedek Sayısı</label>
+                        <select id="autoBackupMaxCount" onchange="saveAutoBackupSettings()">
+                            <option value="3">3 yedek</option>
+                            <option value="5" selected>5 yedek</option>
+                            <option value="10">10 yedek</option>
+                            <option value="20">20 yedek</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+                    <span id="lastBackupInfo" style="font-size:0.82rem;color:var(--text-secondary);">Son yedek: Henüz yok</span>
+                    <button class="btn btn-sm btn-outline" onclick="manualBackup()">
+                        <i class="fas fa-save"></i> Şimdi Yedekle
+                    </button>
+                </div>
+                <div id="backupList" style="max-height:200px;overflow-y:auto;"></div>
+            </div>
+
+            <!-- Klasör Senkronizasyonu (2 Avukat) -->
+            <div class="form-card" style="margin-top:20px;">
+                <h2><i class="fas fa-sync-alt" style="margin-right:8px;color:var(--primary);"></i>Klasör Senkronizasyonu</h2>
+                <p class="form-desc">Ortak bir klasör seçin (Google Drive Sync, OneDrive, paylaşımlı ağ klasörü). Her iki avukat aynı klasörü seçerek verileri senkronize edebilir.</p>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+                    <button class="btn btn-primary" onclick="selectBackupFolder()">
+                        <i class="fas fa-folder-open"></i> Klasör Seç
+                    </button>
+                    <span style="font-size:0.82rem;color:var(--text-secondary);">Seçili: <strong id="backupFolderName">Seçilmedi</strong></span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+                    <button class="btn btn-outline" onclick="backupToFolder()">
+                        <i class="fas fa-upload"></i> Klasöre Yedekle
+                    </button>
+                    <button class="btn btn-outline" onclick="listFolderBackups()">
+                        <i class="fas fa-list"></i> Klasördeki Yedekler
+                    </button>
+                    <span id="lastFolderBackupInfo" style="font-size:0.78rem;color:var(--text-secondary);">Son yedek: Henüz yok</span>
+                </div>
+                <div class="form-row" style="margin-bottom:12px;">
+                    <div class="form-group">
+                        <label>Otomatik Senkron Sıklığı</label>
+                        <select id="folderBackupInterval" onchange="saveFolderBackupSettings()">
+                            <option value="0">Kapalı</option>
+                            <option value="15">Her 15 dakika</option>
+                            <option value="30">Her 30 dakika</option>
+                            <option value="60">Her saat</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="folderBackupList" style="max-height:200px;overflow-y:auto;"></div>
+            </div>
+
+            <div class="form-card" style="margin-top:20px;">
+                <h2>Veri Yönetimi</h2>
+                <p class="form-desc">Tüm verilerinizi yedekleyin veya başka bir cihazdan aktarın.</p>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                    <button class="btn btn-primary" onclick="exportAllData()">
+                        <i class="fas fa-download"></i> Tüm Verileri Dışa Aktar (JSON)
+                    </button>
+                    <button class="btn btn-outline" onclick="importData()">
+                        <i class="fas fa-upload"></i> Veri İçe Aktar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- TOAST NOTIFICATION -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://unpkg.com/docx@8.2.3/build/index.js"></script>
+    <script src="app.js"></script>
+    <script src="modules.js"></script>
+</body>
+</html>
