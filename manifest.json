@@ -1,6 +1,6 @@
 {
-  "name": "Hukuk Teklif Asistanı",
-  "short_name": "Hukuk Asistan",
+  "name": "Akgül Legal",
+  "short_name": "Akgül Legal",
   "description": "Avukat ve hukuk büroları için teklif, sözleşme, dosya ve müvekkil yönetim uygulaması",
   "start_url": "/",
   "display": "standalone",

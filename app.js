@@ -139,8 +139,8 @@ function showLogin() {
         </button>
         <div style="background:var(--bg-card);padding:48px;border-radius:16px;box-shadow:var(--shadow-lg);text-align:center;max-width:420px;width:90%;">
             <i class="fas fa-balance-scale" style="font-size:3rem;color:var(--primary);margin-bottom:16px;display:block;"></i>
-            <h1 style="font-family:var(--font-display);margin-bottom:4px;color:var(--text);">Hukuk Teklif Asistanı</h1>
-            <p style="color:var(--text-secondary);margin-bottom:24px;font-size:0.85rem;">Büro Yönetim Sistemi</p>
+            <h1 style="font-family:var(--font-display);margin-bottom:4px;color:var(--text);">Akgül Legal</h1>
+            <p style="color:var(--text-secondary);margin-bottom:24px;font-size:0.85rem;">Hukuk Büro Yönetim Sistemi</p>
 
             <!-- Avukat Seçim -->
             <div style="display:flex;gap:12px;justify-content:center;margin-bottom:24px;">

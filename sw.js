@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hukuk-asistan-v2';
+const CACHE_NAME = 'akgul-legal-v2';
 const urlsToCache = [
   '/',
   '/index.html',
