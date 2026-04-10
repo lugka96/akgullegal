@@ -69,6 +69,15 @@
             <a href="#" class="nav-item" data-page="tools">
                 <i class="fas fa-calculator"></i><span>Hesaplama Araçları</span>
             </a>
+            <a href="#" class="nav-item" data-page="legal-opinions">
+                <i class="fas fa-file-alt"></i><span>Hukuki Görüşler</span>
+            </a>
+            <a href="#" class="nav-item" data-page="clause-library">
+                <i class="fas fa-book"></i><span>Madde Kütüphanesi</span>
+            </a>
+            <a href="#" class="nav-item" data-page="regwatch">
+                <i class="fas fa-satellite-dish"></i><span>Mevzuat Takip</span>
+            </a>
             <a href="#" class="nav-item" data-page="settings">
                 <i class="fas fa-cog"></i><span>Ayarlar</span>
             </a>
@@ -106,9 +115,18 @@
         <div class="page active" id="page-dashboard">
             <!-- Quick Actions -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-                <div style="display:flex;gap:8px;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <button class="btn btn-primary" onclick="generateMonthlyReport()">
                         <i class="fas fa-chart-bar"></i> Aylık Büro Raporu
+                    </button>
+                    <button class="btn btn-outline" onclick="generateEmailReport('sabah')" title="Günün ajandası, duruşmalar, görevler">
+                        <i class="fas fa-sun"></i> Sabah Raporu
+                    </button>
+                    <button class="btn btn-outline" onclick="generateEmailReport('aksam')" title="Günün özeti ve yarınki ajanda">
+                        <i class="fas fa-moon"></i> Akşam Özeti
+                    </button>
+                    <button class="btn btn-outline" onclick="generateEmailReport('haftalik')" title="Haftalık büro performansı">
+                        <i class="fas fa-calendar-week"></i> Haftalık Rapor
                     </button>
                 </div>
                 <button class="btn btn-outline" onclick="openQuickNote()">
@@ -1675,6 +1693,15 @@
                 <button class="tab-btn" data-tab="ai-redline-tab">
                     <i class="fas fa-exchange-alt"></i> AI Redline
                 </button>
+                <button class="tab-btn" data-tab="contract-risk-tab">
+                    <i class="fas fa-shield-alt"></i> Sözleşme Risk
+                </button>
+                <button class="tab-btn" data-tab="obligation-tab">
+                    <i class="fas fa-exclamation-circle"></i> Yükümlülük
+                </button>
+                <button class="tab-btn" data-tab="mevzuat-search-tab">
+                    <i class="fas fa-search"></i> Mevzuat Ara
+                </button>
             </div>
 
             <!-- Yasal Faiz Hesaplayıcı -->
@@ -2090,6 +2117,202 @@
                     <div id="redlineResult" style="display:none;margin-top:20px;"></div>
                 </div>
             </div>
+
+            <!-- TAB: Sözleşme Risk Analizi -->
+            <div class="tab-content" id="tab-contract-risk-tab">
+                    <div class="form-card">
+                        <h3 style="margin-bottom:16px;"><i class="fas fa-shield-alt" style="color:var(--accent1);"></i> Sözleşme Risk Analizi</h3>
+                        <p class="form-desc">Sözleşme metnini yapıştırın. AI madde madde analiz eder, risk puanı verir, TBK/TTK uyumluluk kontrolü yapar.</p>
+                        <textarea id="contractRiskInput" rows="12" placeholder="Sözleşme metnini buraya yapıştırın..." style="width:100%;margin-bottom:12px;"></textarea>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Sözleşme Tipi (opsiyonel)</label>
+                                <select id="contractRiskType">
+                                    <option value="">Otomatik Tespit</option>
+                                    <option value="hizmet">Hizmet Sözleşmesi</option>
+                                    <option value="satis">Satış Sözleşmesi</option>
+                                    <option value="kira">Kira Sözleşmesi</option>
+                                    <option value="is">İş Sözleşmesi</option>
+                                    <option value="nda">Gizlilik (NDA)</option>
+                                    <option value="danismanlik">Danışmanlık</option>
+                                    <option value="lisans">Lisans</option>
+                                    <option value="ortaklik">Ortaklık</option>
+                                    <option value="kredi">Kredi/Finansman</option>
+                                    <option value="insaat">İnşaat/Eser</option>
+                                    <option value="franchise">Franchise</option>
+                                    <option value="distributorluk">Distribütörlük</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Perspektif</label>
+                                <select id="contractRiskPerspective">
+                                    <option value="muvekkil">Müvekkil Lehine</option>
+                                    <option value="tarafsiz">Tarafsız</option>
+                                    <option value="karsi">Karşı Taraf Lehine</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="btnContractRisk" onclick="analyzeContractRisk()">
+                            <i class="fas fa-search"></i> Risk Analizi Başlat
+                        </button>
+                        <div id="contractRiskResult" style="display:none;margin-top:20px;"></div>
+                    </div>
+            </div>
+
+            <!-- TAB: Yükümlülük Çıkarma -->
+            <div class="tab-content" id="tab-obligation-tab">
+                    <div class="form-card">
+                        <h3 style="margin-bottom:16px;"><i class="fas fa-exclamation-circle" style="color:var(--accent3);"></i> Hukuki Yükümlülük Çıkarma</h3>
+                        <p class="form-desc">Kanun, yönetmelik veya tebliğ metnini yapıştırın. Sistem yükümlülükleri, yaptırımları ve referansları otomatik çıkarır.</p>
+                        <textarea id="obligationInput" rows="12" placeholder="Mevzuat metnini buraya yapıştırın..." style="width:100%;margin-bottom:12px;"></textarea>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Mevzuat Türü</label>
+                                <select id="obligationType">
+                                    <option value="kanun">Kanun</option>
+                                    <option value="yonetmelik">Yönetmelik</option>
+                                    <option value="teblig">Tebliğ</option>
+                                    <option value="genelge">Genelge</option>
+                                    <option value="karar">Kurul Kararı</option>
+                                    <option value="diger">Diğer</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Analiz Yöntemi</label>
+                                <select id="obligationMethod">
+                                    <option value="hybrid">Hibrit (Regex + AI)</option>
+                                    <option value="regex">Sadece Regex (Hızlı)</option>
+                                    <option value="ai">Sadece AI (Detaylı)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="btnObligation" onclick="extractObligations()">
+                            <i class="fas fa-filter"></i> Yükümlülükleri Çıkar
+                        </button>
+                        <div id="obligationResult" style="display:none;margin-top:20px;"></div>
+                    </div>
+            </div>
+
+            <!-- TAB: Mevzuat Arama -->
+            <div class="tab-content" id="tab-mevzuat-search-tab">
+                    <div class="form-card">
+                        <h3 style="margin-bottom:16px;"><i class="fas fa-search" style="color:var(--primary);"></i> Mevzuat Arama</h3>
+                        <p class="form-desc">Kanun adı, numarası veya madde numarasıyla arama yapın. AI destekli açıklama ve ilişkili maddeler.</p>
+                        <div class="form-row">
+                            <div class="form-group" style="flex:2;">
+                                <label>Arama</label>
+                                <input type="text" id="mevzuatSearchInput" placeholder="Örn: TBK m.49, 6698 sayılı KVKK, kira sözleşmesi fesih..." style="width:100%;">
+                            </div>
+                            <div class="form-group">
+                                <label>&nbsp;</label>
+                                <button class="btn btn-primary" onclick="searchMevzuat()" style="width:100%;">
+                                    <i class="fas fa-search"></i> Ara
+                                </button>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+                            <button class="btn btn-sm btn-outline" onclick="document.getElementById('mevzuatSearchInput').value='TBK m.49';searchMevzuat()">TBK m.49</button>
+                            <button class="btn btn-sm btn-outline" onclick="document.getElementById('mevzuatSearchInput').value='6698 KVKK';searchMevzuat()">KVKK</button>
+                            <button class="btn btn-sm btn-outline" onclick="document.getElementById('mevzuatSearchInput').value='HMK m.114 dava şartları';searchMevzuat()">HMK m.114</button>
+                            <button class="btn btn-sm btn-outline" onclick="document.getElementById('mevzuatSearchInput').value='TCK m.157 dolandırıcılık';searchMevzuat()">TCK m.157</button>
+                        </div>
+                        <div id="mevzuatSearchResult" style="display:none;margin-top:12px;"></div>
+                        <div id="mevzuatSearchHistory" style="margin-top:16px;"></div>
+                    </div>
+            </div>
+        </div>
+
+        <!-- PAGE: HUKUKİ GÖRÜŞLER -->
+        <div class="page" id="page-legal-opinions">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h2 style="margin:0;"><i class="fas fa-file-alt" style="color:var(--primary);margin-right:8px;"></i>Hukuki Görüşler</h2>
+                <button class="btn btn-primary" onclick="openOpinionEditor()">
+                    <i class="fas fa-plus"></i> Yeni Görüş
+                </button>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+                <input type="text" id="opinionSearchInput" placeholder="Görüş ara..." style="flex:1;min-width:200px;" oninput="renderOpinions()">
+                <select id="opinionStatusFilter" onchange="renderOpinions()" style="min-width:140px;">
+                    <option value="">Tüm Durumlar</option>
+                    <option value="taslak">Taslak</option>
+                    <option value="onay_bekliyor">Onay Bekliyor</option>
+                    <option value="onaylandi">Onaylandı</option>
+                    <option value="reddedildi">Reddedildi</option>
+                    <option value="arsivlendi">Arşivlendi</option>
+                </select>
+                <select id="opinionPriorityFilter" onchange="renderOpinions()" style="min-width:120px;">
+                    <option value="">Tüm Öncelikler</option>
+                    <option value="acil">Acil</option>
+                    <option value="yuksek">Yüksek</option>
+                    <option value="normal">Normal</option>
+                    <option value="dusuk">Düşük</option>
+                </select>
+            </div>
+            <div id="opinionsList"></div>
+        </div>
+
+        <!-- PAGE: MADDE KÜTÜPHANESİ -->
+        <div class="page" id="page-clause-library">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h2 style="margin:0;"><i class="fas fa-book" style="color:var(--primary);margin-right:8px;"></i>Madde Kütüphanesi</h2>
+                <button class="btn btn-primary" onclick="openClauseEditor()">
+                    <i class="fas fa-plus"></i> Yeni Madde
+                </button>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+                <input type="text" id="clauseSearchInput" placeholder="Madde ara..." style="flex:1;min-width:200px;" oninput="renderClauses()">
+                <select id="clauseCategoryFilter" onchange="renderClauses()">
+                    <option value="">Tüm Kategoriler</option>
+                    <option value="cezai-sart">Cezai Şart</option>
+                    <option value="mucbir-sebep">Mücbir Sebep</option>
+                    <option value="fesih">Fesih Koşulları</option>
+                    <option value="gizlilik">Gizlilik</option>
+                    <option value="odeme">Ödeme Koşulları</option>
+                    <option value="uyusmazlik">Uyuşmazlık Çözümü</option>
+                    <option value="kvkk">KVKK Uyum</option>
+                    <option value="rekabet">Rekabet Yasağı</option>
+                    <option value="tazminat">Tazminat</option>
+                    <option value="sure">Süre & Uzatma</option>
+                    <option value="teminat">Teminat</option>
+                    <option value="diger">Diğer</option>
+                </select>
+            </div>
+            <div id="clausesList"></div>
+        </div>
+
+        <!-- PAGE: MEVZUAT TAKİP -->
+        <div class="page" id="page-regwatch">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h2 style="margin:0;"><i class="fas fa-satellite-dish" style="color:var(--primary);margin-right:8px;"></i>Mevzuat Takip</h2>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-outline" onclick="fetchRegulations()">
+                        <i class="fas fa-sync"></i> Güncelle
+                    </button>
+                    <button class="btn btn-primary" onclick="addManualRegulation()">
+                        <i class="fas fa-plus"></i> Manuel Ekle
+                    </button>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+                <input type="text" id="regSearchInput" placeholder="Düzenleme ara..." style="flex:1;min-width:200px;" oninput="renderRegulations()">
+                <select id="regSourceFilter" onchange="renderRegulations()">
+                    <option value="">Tüm Kaynaklar</option>
+                    <option value="resmi-gazete">Resmi Gazete</option>
+                    <option value="spk">SPK</option>
+                    <option value="kvkk">KVKK</option>
+                    <option value="tcmb">TCMB</option>
+                    <option value="reklamkurulu">Reklam Kurulu</option>
+                    <option value="diger">Diğer</option>
+                </select>
+                <select id="regImportanceFilter" onchange="renderRegulations()">
+                    <option value="">Tüm Önem</option>
+                    <option value="kritik">🔴 Kritik</option>
+                    <option value="onemli">🟡 Önemli</option>
+                    <option value="bilgi">🟢 Bilgi</option>
+                </select>
+            </div>
+            <div id="regStats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;"></div>
+            <div id="regulationsList"></div>
         </div>
 
         <!-- PAGE: SETTINGS -->
@@ -2321,9 +2544,10 @@
                     <button class="btn btn-primary" onclick="exportAllData()">
                         <i class="fas fa-download"></i> Tüm Verileri Dışa Aktar (JSON)
                     </button>
-                    <button class="btn btn-outline" onclick="importData()">
+                    <button class="btn btn-outline" onclick="triggerImportData()">
                         <i class="fas fa-upload"></i> Veri İçe Aktar
                     </button>
+                    <input type="file" id="importDataInput" accept=".json" style="display:none;" onchange="importData(this)">
                 </div>
             </div>
         </div>

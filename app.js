@@ -279,7 +279,10 @@ function navigateTo(pageId) {
         'timesheet': 'Zaman Takibi',
         'contacts': 'Karşı Taraf & Kişiler',
         'petitions': 'Dilekçe Şablonları',
-        'tools': 'Hesaplama Araçları'
+        'tools': 'Hesaplama Araçları',
+        'legal-opinions': 'Hukuki Görüşler',
+        'clause-library': 'Madde Kütüphanesi',
+        'regwatch': 'Mevzuat Takip'
     };
     $('#pageTitle').textContent = titles[pageId] || pageId;
 
@@ -294,6 +297,23 @@ function navigateTo(pageId) {
     if (pageId === 'hearings') refreshHearings();
     if (pageId === 'case-files') refreshCaseFiles();
     if (pageId === 'templates') refreshCustomTemplates();
+    if (pageId === 'legal-opinions' && typeof renderOpinions === 'function') renderOpinions();
+    if (pageId === 'clause-library' && typeof renderClauses === 'function') renderClauses();
+    if (pageId === 'regwatch' && typeof renderRegulations === 'function') renderRegulations();
+    if (pageId === 'tools') {
+        if (typeof loadBillingExpenses === 'function') {
+            const sel = document.getElementById('billingClient');
+            if (sel) {
+                sel.innerHTML = '<option value="">Müvekkil seçin...</option>';
+                (DB.data.clients || []).forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.name;
+                    opt.textContent = c.name;
+                    sel.appendChild(opt);
+                });
+            }
+        }
+    }
 }
 
 // ---- WIZARD STATE ----
@@ -2639,6 +2659,7 @@ function loadSettings() {
 
 function saveSettings() {
     DB.data.settings = {
+        ...DB.data.settings,
         firmName: $('#firmName')?.value || '',
         barAssociation: $('#barAssociation')?.value || '',
         firmAddress: $('#firmAddress')?.value || '',

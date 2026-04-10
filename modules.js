@@ -1570,6 +1570,11 @@ window.exportAllData = function() {
     toast('Yedek dosyası indirildi', 'success');
 };
 
+window.triggerImportData = function() {
+    const input = document.getElementById('importDataInput');
+    if (input) input.click();
+};
+
 window.importData = function(input) {
     const file = input.files[0];
     if (!file) return;
@@ -6331,5 +6336,1308 @@ window.applyImprovedText = function() {
                 card.appendChild(btnDiv);
             });
         }, 200);
+    };
+})();
+
+// ============================================================
+// #1 — SÖZLEŞME RİSK ANALİZİ (contract-shield patterns)
+// ============================================================
+(function() {
+    const KEY_TERMS = [
+        { term: 'cezai şart', category: 'cezai_sart', variants: ['cezai şart', 'ceza koşulu', 'cezai müeyyide', 'konvansiyonel ceza'], risk: true },
+        { term: 'mücbir sebep', category: 'mucbir_sebep', variants: ['mücbir sebep', 'force majeure', 'zorlayıcı neden', 'beklenmeyen hal'], risk: true },
+        { term: 'fesih', category: 'fesih', variants: ['fesih', 'fesh', 'sona erdirme', 'sözleşmenin sona ermesi', 'tasfiye'], risk: true },
+        { term: 'temerrüt', category: 'temerut', variants: ['temerrüt', 'temerrüd', 'gecikme', 'ifa gecikmesi'], risk: true },
+        { term: 'sorumsuzluk', category: 'sorumsuzluk', variants: ['sorumsuzluk', 'sorumluluk sınır', 'sorumluluğun sınırlandırılması', 'sorumlu tutulamaz'], risk: true },
+        { term: 'gizlilik', category: 'gizlilik', variants: ['gizlilik', 'sır saklama', 'NDA', 'ticari sır', 'gizli bilgi', 'confidential'], risk: true },
+        { term: 'rekabet yasağı', category: 'rekabet_yasagi', variants: ['rekabet yasağı', 'rekabet etmeme', 'non-compete', 'rekabet kısıtlama'], risk: true },
+        { term: 'tazminat', category: 'tazminat', variants: ['tazminat', 'zarar tazmini', 'maddi zarar', 'manevi zarar', 'kar kaybı'], risk: true },
+        { term: 'zamanaşımı', category: 'zamanasimi', variants: ['zamanaşımı', 'zaman aşımı', 'hak düşürücü süre'], risk: true },
+        { term: 'kişisel veri', category: 'kvkk', variants: ['kişisel veri', 'KVKK', 'veri koruma', 'açık rıza', 'aydınlatma', 'veri işleme'], risk: true },
+        { term: 'uyuşmazlık', category: 'uyusmazlik', variants: ['uyuşmazlık', 'ihtilaf', 'arabuluculuk', 'tahkim', 'yetkili mahkeme'], risk: false },
+        { term: 'teminat', category: 'teminat', variants: ['teminat', 'garanti', 'kefalet', 'ipotek', 'rehin', 'banka garantisi'], risk: true },
+        { term: 'devir', category: 'devir', variants: ['devir', 'temlik', 'alacağın devri', 'sözleşme devri', 'hak devri'], risk: true },
+        { term: 'ödeme', category: 'odeme', variants: ['ödeme koşulları', 'vade', 'taksit', 'peşin', 'fatura'], risk: false },
+        { term: 'süre', category: 'sure', variants: ['sözleşme süresi', 'uzatma', 'otomatik uzama', 'yenileme'], risk: false },
+    ];
+
+    const CONTRACT_TYPES = [
+        { type: 'hizmet', label: 'Hizmet Sözleşmesi', keywords: ['hizmet sözleşmesi', 'hizmet alım', 'servis sözleşmesi'] },
+        { type: 'satis', label: 'Alım-Satım Sözleşmesi', keywords: ['alım satım', 'satış sözleşmesi', 'mal alım', 'tedarik sözleşmesi'] },
+        { type: 'kira', label: 'Kira Sözleşmesi', keywords: ['kira sözleşmesi', 'kiralama', 'kira bedeli', 'kiracı', 'kiraya veren'] },
+        { type: 'nda', label: 'Gizlilik Sözleşmesi (NDA)', keywords: ['gizlilik sözleşmesi', 'NDA', 'non-disclosure', 'sır saklama'] },
+        { type: 'is', label: 'İş Sözleşmesi', keywords: ['iş sözleşmesi', 'işçi', 'işveren', 'çalışma sözleşmesi'] },
+        { type: 'danismanlik', label: 'Danışmanlık Sözleşmesi', keywords: ['danışmanlık sözleşmesi', 'müşavirlik', 'consulting'] },
+        { type: 'lisans', label: 'Lisans Sözleşmesi', keywords: ['lisans sözleşmesi', 'yazılım lisans', 'kullanım hakkı'] },
+        { type: 'ortaklik', label: 'Ortaklık Sözleşmesi', keywords: ['ortaklık sözleşmesi', 'adi ortaklık', 'joint venture'] },
+        { type: 'kredi', label: 'Kredi/Borç Sözleşmesi', keywords: ['kredi sözleşmesi', 'borç sözleşmesi', 'ödünç'] },
+        { type: 'insaat', label: 'İnşaat/Eser Sözleşmesi', keywords: ['inşaat sözleşmesi', 'yapım sözleşmesi', 'müteahhit', 'eser sözleşmesi'] },
+        { type: 'franchise', label: 'Franchise Sözleşmesi', keywords: ['franchise', 'franchising', 'imtiyaz'] },
+        { type: 'distributorluk', label: 'Distribütörlük Sözleşmesi', keywords: ['distribütörlük', 'bayilik', 'dağıtım sözleşmesi'] },
+        { type: 'sigorta', label: 'Sigorta Sözleşmesi', keywords: ['sigorta sözleşmesi', 'sigorta poliçesi', 'sigortalı'] },
+    ];
+
+    const CATEGORY_WEIGHTS = { 'Yasal Uyumluluk': 0.35, 'Finansal Risk': 0.25, 'Operasyonel Risk': 0.20, 'İtibar Riski': 0.20 };
+    const SEVERITY_POINTS = { KIRMIZI: 30, SARI: 10, YESIL: 2 };
+    const RISK_THRESHOLDS = [
+        { max: 25, level: 'Düşük', code: 'low', color: 'var(--accent2)' },
+        { max: 50, level: 'Orta', code: 'medium', color: 'var(--accent3)' },
+        { max: 75, level: 'Yüksek', code: 'high', color: 'var(--accent1)' },
+        { max: 100, level: 'Kritik', code: 'critical', color: '#e74c3c' },
+    ];
+
+    const CURRENCY_PATTERNS = [
+        { regex: /(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\s*(?:TL|₺|Türk Lirası)/gi, currency: 'TRY' },
+        { regex: /(?:\$\s*)(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)/gi, currency: 'USD' },
+        { regex: /(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\s*(?:USD|ABD Doları)/gi, currency: 'USD' },
+        { regex: /(?:€\s*)(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)/gi, currency: 'EUR' },
+        { regex: /(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\s*(?:EUR|Euro|Avro)/gi, currency: 'EUR' },
+    ];
+
+    function detectContractType(text) {
+        const lower = text.toLowerCase();
+        for (const ct of CONTRACT_TYPES) {
+            if (ct.keywords.some(k => lower.includes(k))) return ct;
+        }
+        return null;
+    }
+
+    function extractClauses(text) {
+        const clauses = [];
+        const pattern = /(?:^|\n)\s*(?:MADDE|Madde|madde)\s+(\d+(?:\.\d+)*)\s*[-:.)\s]+\s*([^\n]*)/g;
+        let m;
+        while ((m = pattern.exec(text)) !== null) {
+            clauses.push({ number: m[1], title: m[2].trim(), start: m.index });
+        }
+        if (clauses.length === 0) {
+            const p2 = /(?:^|\n)\s*(\d+)\s*[.)]\s+([A-ZÇĞİÖŞÜ][^\n]*)/g;
+            while ((m = p2.exec(text)) !== null) {
+                clauses.push({ number: m[1], title: m[2].trim(), start: m.index });
+            }
+        }
+        for (let i = 0; i < clauses.length; i++) {
+            const end = i + 1 < clauses.length ? clauses[i + 1].start : text.length;
+            clauses[i].body = text.substring(clauses[i].start, end).trim();
+        }
+        return clauses;
+    }
+
+    function detectKeyTerms(text) {
+        const lower = text.toLowerCase();
+        const found = [];
+        for (const kt of KEY_TERMS) {
+            const matches = kt.variants.filter(v => lower.includes(v.toLowerCase()));
+            if (matches.length > 0) found.push({ ...kt, matchedVariants: matches });
+        }
+        return found;
+    }
+
+    function detectCurrencies(text) {
+        const amounts = [];
+        for (const cp of CURRENCY_PATTERNS) {
+            let m;
+            const re = new RegExp(cp.regex.source, cp.regex.flags);
+            while ((m = re.exec(text)) !== null) {
+                const raw = m[1] || m[0];
+                const normalized = parseFloat(raw.replace(/\./g, '').replace(',', '.'));
+                if (!isNaN(normalized) && normalized > 0) {
+                    amounts.push({ raw: m[0], value: normalized, currency: cp.currency });
+                }
+            }
+        }
+        return amounts;
+    }
+
+    window.analyzeContractRisk = async function() {
+        const text = document.getElementById('contractRiskInput')?.value;
+        if (!text || text.length < 50) { toast('En az 50 karakter sözleşme metni gerekli', 'info'); return; }
+
+        const apiKey = DB.data.settings?.geminiApiKey;
+        if (!apiKey) { toast('Ayarlar → Gemini API Key gerekli', 'error'); return; }
+
+        const btn = document.getElementById('btnContractRisk');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analiz ediliyor...'; }
+
+        // Local analysis
+        const selectedType = document.getElementById('contractRiskType')?.value;
+        const perspective = document.getElementById('contractRiskPerspective')?.value || 'muvekkil';
+        const detectedType = selectedType ? CONTRACT_TYPES.find(c => c.type === selectedType) : detectContractType(text);
+        const clauses = extractClauses(text);
+        const keyTerms = detectKeyTerms(text);
+        const currencies = detectCurrencies(text);
+
+        // AI analysis
+        const prompt = `Sen uzman bir Türk hukuk avukatısın. Aşağıdaki sözleşmeyi ${perspective === 'muvekkil' ? 'müvekkil lehine' : perspective === 'karsi' ? 'karşı taraf lehine' : 'tarafsız'} analiz et.
+
+Sözleşme Tipi: ${detectedType?.label || 'Belirsiz'}
+Tespit edilen anahtar terimler: ${keyTerms.map(k => k.term).join(', ') || 'Yok'}
+Madde sayısı: ${clauses.length}
+${currencies.length ? 'Tespit edilen tutarlar: ' + currencies.map(c => c.raw).join(', ') : ''}
+
+SÖZLEŞME METNİ:
+${text.substring(0, 6000)}
+
+JSON formatında yanıt ver:
+{
+  "genel_puan": 0-100 arası risk puanı,
+  "risk_seviyesi": "Düşük/Orta/Yüksek/Kritik",
+  "yasal_uyumluluk": { "puan": 0-100, "bulgular": [{"madde":"","seviye":"KIRMIZI/SARI/YESIL","aciklama":"","ilgili_kanun":""}] },
+  "finansal_risk": { "puan": 0-100, "bulgular": [{"madde":"","seviye":"","aciklama":""}] },
+  "operasyonel_risk": { "puan": 0-100, "bulgular": [{"madde":"","seviye":"","aciklama":""}] },
+  "itibar_riski": { "puan": 0-100, "bulgular": [{"madde":"","seviye":"","aciklama":""}] },
+  "kritik_maddeler": [{"madde_no":"","baslik":"","risk":"","oneri":""}],
+  "eksik_maddeler": ["eksik madde 1", "eksik madde 2"],
+  "genel_degerlendirme": "2-3 cümle özet"
+}`;
+
+        try {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 4096 } })
+            });
+            const data = await resp.json();
+            const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+            const result = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+
+            renderContractRiskResult(result, { detectedType, clauses, keyTerms, currencies });
+        } catch (e) {
+            toast('AI analiz hatası: ' + e.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> Risk Analizi Başlat'; }
+        }
+    };
+
+    function renderContractRiskResult(ai, local) {
+        const el = document.getElementById('contractRiskResult');
+        if (!el) return;
+        el.style.display = 'block';
+
+        const score = ai?.genel_puan || 0;
+        const threshold = RISK_THRESHOLDS.find(t => score <= t.max) || RISK_THRESHOLDS[3];
+        const categories = ['yasal_uyumluluk', 'finansal_risk', 'operasyonel_risk', 'itibar_riski'];
+        const catLabels = { yasal_uyumluluk: 'Yasal Uyumluluk', finansal_risk: 'Finansal Risk', operasyonel_risk: 'Operasyonel Risk', itibar_riski: 'İtibar Riski' };
+        const catWeightLabels = { yasal_uyumluluk: '35%', finansal_risk: '25%', operasyonel_risk: '20%', itibar_riski: '20%' };
+
+        el.innerHTML = `
+            <div style="display:flex;gap:20px;align-items:center;padding:16px;background:var(--bg-secondary);border-radius:10px;margin-bottom:16px;">
+                <div style="width:80px;height:80px;border-radius:50%;border:5px solid ${threshold.color};display:flex;align-items:center;justify-content:center;flex-direction:column;">
+                    <span style="font-size:1.5rem;font-weight:700;color:${threshold.color};">${score}</span>
+                    <span style="font-size:0.6rem;color:var(--text-secondary);">/100</span>
+                </div>
+                <div style="flex:1;">
+                    <h3 style="margin:0;color:${threshold.color};">Risk: ${threshold.level}</h3>
+                    <p style="margin:4px 0;font-size:0.85rem;">${ai?.genel_degerlendirme || ''}</p>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);">
+                        Tip: ${local.detectedType?.label || 'Belirsiz'} | Madde: ${local.clauses.length} | Anahtar Terim: ${local.keyTerms.length}
+                        ${local.currencies.length ? ' | Tutar: ' + local.currencies.map(c => c.raw).join(', ') : ''}
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+                ${categories.map(cat => {
+                    const catData = ai?.[cat] || {};
+                    const catScore = catData.puan || 0;
+                    const catThreshold = RISK_THRESHOLDS.find(t => catScore <= t.max) || RISK_THRESHOLDS[3];
+                    return `<div style="padding:10px;background:var(--bg-secondary);border-radius:8px;border-top:3px solid ${catThreshold.color};text-align:center;">
+                        <div style="font-size:1.2rem;font-weight:700;color:${catThreshold.color};">${catScore}</div>
+                        <div style="font-size:0.72rem;color:var(--text-secondary);">${catLabels[cat]}</div>
+                        <div style="font-size:0.65rem;color:var(--text-secondary);">Ağırlık: ${catWeightLabels[cat]}</div>
+                    </div>`;
+                }).join('')}
+            </div>
+
+            ${categories.map(cat => {
+                const findings = ai?.[cat]?.bulgular || [];
+                if (!findings.length) return '';
+                return `<div style="margin-bottom:12px;">
+                    <h4 style="font-size:0.85rem;margin-bottom:6px;">${catLabels[cat]}</h4>
+                    ${findings.map(f => {
+                        const sColor = f.seviye === 'KIRMIZI' ? 'var(--accent1)' : f.seviye === 'SARI' ? 'var(--accent3)' : 'var(--accent2)';
+                        return `<div style="padding:8px;margin-bottom:4px;border-left:3px solid ${sColor};background:var(--bg-secondary);border-radius:0 6px 6px 0;font-size:0.82rem;">
+                            <span style="color:${sColor};font-weight:600;">${f.seviye === 'KIRMIZI' ? '🔴' : f.seviye === 'SARI' ? '🟡' : '🟢'} ${f.madde || ''}</span>
+                            <span>${f.aciklama || ''}</span>
+                            ${f.ilgili_kanun ? `<span style="color:var(--primary);font-size:0.75rem;"> (${f.ilgili_kanun})</span>` : ''}
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            }).join('')}
+
+            ${ai?.kritik_maddeler?.length ? `<div style="margin-bottom:12px;">
+                <h4 style="font-size:0.85rem;color:var(--accent1);margin-bottom:6px;"><i class="fas fa-exclamation-triangle"></i> Kritik Maddeler</h4>
+                ${ai.kritik_maddeler.map(k => `<div style="padding:8px;background:rgba(231,76,60,0.1);border-radius:6px;margin-bottom:4px;font-size:0.82rem;">
+                    <strong>${k.madde_no} ${k.baslik || ''}</strong> — ${k.risk || ''}
+                    <div style="color:var(--primary);font-size:0.78rem;margin-top:2px;">💡 ${k.oneri || ''}</div>
+                </div>`).join('')}
+            </div>` : ''}
+
+            ${ai?.eksik_maddeler?.length ? `<div style="margin-bottom:12px;">
+                <h4 style="font-size:0.85rem;color:var(--accent3);margin-bottom:6px;"><i class="fas fa-plus-circle"></i> Eksik Maddeler</h4>
+                ${ai.eksik_maddeler.map(e => `<div style="font-size:0.82rem;padding:4px 0;">• ${e}</div>`).join('')}
+            </div>` : ''}
+
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                <h4 style="width:100%;font-size:0.85rem;margin-bottom:4px;">Tespit Edilen Anahtar Terimler</h4>
+                ${local.keyTerms.map(kt => `<span style="padding:3px 8px;background:${kt.risk ? 'rgba(231,76,60,0.1)' : 'rgba(74,108,247,0.1)'};border-radius:12px;font-size:0.75rem;color:${kt.risk ? 'var(--accent1)' : 'var(--primary)'};">${kt.term}</span>`).join('')}
+            </div>
+        `;
+    }
+})();
+
+// ============================================================
+// #2 — HUKUKİ YÜKÜMLÜLÜK ÇIKARMA (legal-agent patterns)
+// ============================================================
+(function() {
+    const OBLIGATION_PATTERNS = [
+        { regex: /zorunludur/gi, type: 'zorunlu' },
+        { regex: /mecburdur/gi, type: 'zorunlu' },
+        { regex: /yükümlüdür/gi, type: 'zorunlu' },
+        { regex: /mükelleftir/gi, type: 'zorunlu' },
+        { regex: /yapılması\s+(?:gerekir|zorunludur|şarttır)/gi, type: 'zorunlu' },
+        { regex: /(?:sağlanması|bulunması|olması|edilmesi|alınması|yapılması)\s+(?:gerekir|zorunludur|şarttır|esastır)/gi, type: 'zorunlu' },
+        { regex: /(?:şarttır|esastır)/gi, type: 'sart' },
+        { regex: /(?:edemez|yapamaz|bulunamaz|verilemez|kabul\s+edilemez)/gi, type: 'yasak' },
+        { regex: /(?:yasaktır|yasaklanmıştır)/gi, type: 'yasak' },
+        { regex: /(?:hakkı\s+vardır|yetkilidir|yetkisi\s+vardır)/gi, type: 'yetki' },
+        { regex: /(?:bildirimde\s+bulunur|bildirim\s+yapar|bilgi\s+verir)/gi, type: 'bildirim' },
+        { regex: /(?:tabi(?:dir|tutulur)|kapsamındadır)/gi, type: 'tabi' },
+        { regex: /(?:izin\s+almak\s+zorundadır|izne\s+tabidir)/gi, type: 'izin' },
+        { regex: /(?:ödenmesi\s+gerekir|ödemekle\s+yükümlüdür|ödenir)/gi, type: 'odeme' },
+    ];
+
+    const CONSEQUENCE_PATTERNS = [
+        { regex: /(\d+)\s*(?:yıldan|yılına)\s+(\d+)\s*(?:yıla|yılına)\s+kadar\s+hapis/gi, type: 'hapis_cezasi' },
+        { regex: /(\d+)\s*(?:aydan|ayına)\s+(\d+)\s*(?:aya|ayına)\s+kadar\s+hapis/gi, type: 'hapis_cezasi' },
+        { regex: /idari\s+para\s+cezas[ıi]/gi, type: 'idari_para_cezasi' },
+        { regex: /adl[iî]\s+para\s+cezas[ıi]/gi, type: 'adli_para_cezasi' },
+        { regex: /faaliyet\s+(?:izni(?:nin)?|yetkisi(?:nin)?)\s*(?:iptal|askıya|kaldırıl)/gi, type: 'faaliyet_kisitlama' },
+        { regex: /(?:hapis\s+cezası)/gi, type: 'hapis_cezasi' },
+        { regex: /(?:para\s+cezası)/gi, type: 'para_cezasi' },
+        { regex: /(?:tazminat|zarar.*tazmin)/gi, type: 'tazminat' },
+        { regex: /(?:yasaklanır|men\s+edilir)/gi, type: 'yasaklama' },
+    ];
+
+    const REFERENCE_PATTERNS = [
+        /(\d{3,5})\s+sayılı\s+([A-ZÇĞİÖŞÜa-zçğıöşü\s]+?(?:Kanunu?|Kanun\s+Hükmünde\s+Kararname))/g,
+        /([IVXLCDM]+-[\d.]+-[\d.]+)\s+(?:sayılı\s+)?([A-ZÇĞİÖŞÜa-zçğıöşü\s]+?Tebliğ\w*)/g,
+        /(\d+)\s*(?:[iıüu]nc[iıüu]|\.)\s*madde/gi,
+    ];
+
+    const NON_OBLIGATION_RE = /(?:genel\s+hükümler\s+uygulanır|yürürlüğe\s+girer|yürürlükten\s+kaldırılmıştır|yürütür|tanımlar[ıi]?\s+(?:aşağıda|şu|bu)|ifade\s+eder|anlaşılır|kastedilir|saklıdır)/i;
+
+    const DEADLINE_PATTERNS = [
+        { regex: /(\d+)\s*(?:iş)?\s*gün\s+içinde/gi, fmt: m => `${m[1]} gün içinde` },
+        { regex: /(\d+)\s*ay\s+içinde/gi, fmt: m => `${m[1]} ay içinde` },
+        { regex: /(\d+)\s*yıl\s+içinde/gi, fmt: m => `${m[1]} yıl içinde` },
+        { regex: /derhal/gi, fmt: () => 'Derhal' },
+        { regex: /gecikmeksizin/gi, fmt: () => 'Gecikmeksizin' },
+    ];
+
+    const TYPE_LABELS = { zorunlu: 'Zorunlu', sart: 'Şart', yasak: 'Yasak', yetki: 'Yetki', bildirim: 'Bildirim', tabi: 'Tabi', izin: 'İzin', odeme: 'Ödeme' };
+    const TYPE_COLORS = { zorunlu: 'var(--accent1)', sart: 'var(--accent3)', yasak: '#e74c3c', yetki: 'var(--primary)', bildirim: 'var(--accent2)', tabi: '#9b59b6', izin: '#e67e22', odeme: '#1abc9c' };
+    const CONS_LABELS = { hapis_cezasi: 'Hapis Cezası', adli_para_cezasi: 'Adli Para Cezası', idari_para_cezasi: 'İdari Para Cezası', faaliyet_kisitlama: 'Faaliyet Kısıtlama', para_cezasi: 'Para Cezası', tazminat: 'Tazminat', yasaklama: 'Yasaklama' };
+
+    function splitArticles(text) {
+        const re = /(?:^|\n)\s*(?:MADDE|Madde)\s+(\d+)\s*[-–—.]?\s*/gm;
+        const articles = [];
+        let m;
+        const positions = [];
+        while ((m = re.exec(text)) !== null) positions.push({ no: m[1], idx: m.index });
+        for (let i = 0; i < positions.length; i++) {
+            const end = i + 1 < positions.length ? positions[i + 1].idx : text.length;
+            articles.push({ no: positions[i].no, text: text.substring(positions[i].idx, end).trim() });
+        }
+        if (articles.length === 0) articles.push({ no: '-', text: text });
+        return articles;
+    }
+
+    function regexExtract(text) {
+        const articles = splitArticles(text);
+        const obligations = [], consequences = [], references = [], deadlines = [];
+
+        for (const art of articles) {
+            const sentences = art.text.split(/[.;]\s*/);
+            for (const sent of sentences) {
+                if (NON_OBLIGATION_RE.test(sent)) continue;
+                for (const op of OBLIGATION_PATTERNS) {
+                    const re = new RegExp(op.regex.source, op.regex.flags);
+                    if (re.test(sent)) {
+                        obligations.push({ article: art.no, text: sent.trim().substring(0, 200), type: op.type });
+                        break;
+                    }
+                }
+            }
+            for (const cp of CONSEQUENCE_PATTERNS) {
+                const re = new RegExp(cp.regex.source, cp.regex.flags);
+                let cm;
+                while ((cm = re.exec(art.text)) !== null) {
+                    consequences.push({ article: art.no, text: cm[0], type: cp.type });
+                }
+            }
+            for (const rp of REFERENCE_PATTERNS) {
+                const re = new RegExp(rp.source, rp.flags);
+                let rm;
+                while ((rm = re.exec(art.text)) !== null) {
+                    references.push({ article: art.no, text: rm[0] });
+                }
+            }
+            for (const dp of DEADLINE_PATTERNS) {
+                const re = new RegExp(dp.regex.source, dp.regex.flags);
+                let dm;
+                while ((dm = re.exec(art.text)) !== null) {
+                    deadlines.push({ article: art.no, text: dm[0] });
+                }
+            }
+        }
+        return { obligations, consequences, references, deadlines };
+    }
+
+    window.extractObligations = async function() {
+        const text = document.getElementById('obligationInput')?.value;
+        if (!text || text.length < 30) { toast('En az 30 karakter mevzuat metni gerekli', 'info'); return; }
+
+        const method = document.getElementById('obligationMethod')?.value || 'hybrid';
+        const btn = document.getElementById('btnObligation');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analiz ediliyor...'; }
+
+        const regexResult = regexExtract(text);
+        let aiResult = null;
+
+        if (method !== 'regex') {
+            const apiKey = DB.data.settings?.geminiApiKey;
+            if (apiKey) {
+                try {
+                    const prompt = `Türk hukuk uzmanı olarak aşağıdaki mevzuat metnini analiz et. JSON formatında yanıt ver:
+{
+  "yukumlulukler": [{"madde":"","metin":"","tip":"zorunlu/yasak/sart/izin/bildirim","muhatap":"","sure":""}],
+  "yaptirimlar": [{"madde":"","metin":"","tip":"hapis/para_cezasi/idari_ceza/faaliyet_yasagi/tazminat","detay":""}],
+  "referanslar": [{"madde":"","atif":"","aciklama":""}],
+  "ozet": "Mevzuatın kısa özeti",
+  "toplam_yukumluluk": sayı,
+  "kritik_maddeler": ["madde numaraları"]
+}
+
+MEVZUAT METNİ:
+${text.substring(0, 6000)}`;
+                    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 4096 } })
+                    });
+                    const data = await resp.json();
+                    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                    const jm = aiText.match(/\{[\s\S]*\}/);
+                    if (jm) aiResult = JSON.parse(jm[0]);
+                } catch (e) { /* fallback to regex */ }
+            }
+        }
+
+        renderObligationResult(regexResult, aiResult, method);
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-filter"></i> Yükümlülükleri Çıkar'; }
+    };
+
+    function renderObligationResult(regex, ai, method) {
+        const el = document.getElementById('obligationResult');
+        if (!el) return;
+        el.style.display = 'block';
+
+        const obligations = method === 'ai' && ai?.yukumlulukler ? ai.yukumlulukler : regex.obligations;
+        const consequences = method === 'ai' && ai?.yaptirimlar ? ai.yaptirimlar : regex.consequences;
+
+        const typeCounts = {};
+        obligations.forEach(o => { const t = o.tip || o.type; typeCounts[t] = (typeCounts[t] || 0) + 1; });
+
+        el.innerHTML = `
+            ${ai?.ozet ? `<div style="padding:12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:16px;font-size:0.85rem;">${ai.ozet}</div>` : ''}
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+                <div style="padding:10px;background:var(--bg-secondary);border-radius:8px;text-align:center;">
+                    <div style="font-size:1.4rem;font-weight:700;color:var(--primary);">${obligations.length}</div>
+                    <div style="font-size:0.72rem;color:var(--text-secondary);">Yükümlülük</div>
+                </div>
+                <div style="padding:10px;background:var(--bg-secondary);border-radius:8px;text-align:center;">
+                    <div style="font-size:1.4rem;font-weight:700;color:var(--accent1);">${consequences.length}</div>
+                    <div style="font-size:0.72rem;color:var(--text-secondary);">Yaptırım</div>
+                </div>
+                <div style="padding:10px;background:var(--bg-secondary);border-radius:8px;text-align:center;">
+                    <div style="font-size:1.4rem;font-weight:700;color:var(--accent3);">${regex.references.length}</div>
+                    <div style="font-size:0.72rem;color:var(--text-secondary);">Referans</div>
+                </div>
+                <div style="padding:10px;background:var(--bg-secondary);border-radius:8px;text-align:center;">
+                    <div style="font-size:1.4rem;font-weight:700;color:var(--accent2);">${regex.deadlines.length}</div>
+                    <div style="font-size:0.72rem;color:var(--text-secondary);">Süre</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+                ${Object.entries(typeCounts).map(([t, c]) => `<span style="padding:3px 8px;background:${TYPE_COLORS[t] || 'var(--primary)'}22;color:${TYPE_COLORS[t] || 'var(--primary)'};border-radius:12px;font-size:0.75rem;">${TYPE_LABELS[t] || t}: ${c}</span>`).join('')}
+            </div>
+            <h4 style="font-size:0.85rem;margin-bottom:8px;">Yükümlülükler</h4>
+            <div style="max-height:300px;overflow-y:auto;">
+                ${obligations.map((o, i) => {
+                    const t = o.tip || o.type;
+                    return `<div style="padding:8px;margin-bottom:4px;border-left:3px solid ${TYPE_COLORS[t] || 'var(--primary)'};background:var(--bg-secondary);border-radius:0 6px 6px 0;font-size:0.8rem;">
+                        <span style="font-weight:600;color:${TYPE_COLORS[t] || 'var(--primary)'};">m.${o.madde || o.article} [${TYPE_LABELS[t] || t}]</span>
+                        ${o.muhatap ? `<span style="color:var(--text-secondary);"> → ${o.muhatap}</span>` : ''}
+                        ${o.sure ? `<span style="color:var(--accent3);"> ⏱ ${o.sure}</span>` : ''}
+                        <div style="margin-top:2px;">${o.metin || o.text}</div>
+                    </div>`;
+                }).join('')}
+            </div>
+            ${consequences.length ? `<h4 style="font-size:0.85rem;margin:12px 0 8px;">Yaptırımlar</h4>
+                ${consequences.map(c => `<div style="padding:6px 8px;background:rgba(231,76,60,0.08);border-radius:6px;margin-bottom:4px;font-size:0.8rem;">
+                    <span style="color:var(--accent1);font-weight:600;">m.${c.madde || c.article}</span>
+                    <span style="background:var(--accent1);color:#fff;padding:1px 6px;border-radius:10px;font-size:0.7rem;margin:0 4px;">${CONS_LABELS[c.tip || c.type] || c.tip || c.type}</span>
+                    ${c.metin || c.text}${c.detay ? ' — ' + c.detay : ''}
+                </div>`).join('')}` : ''}
+            ${regex.deadlines.length ? `<h4 style="font-size:0.85rem;margin:12px 0 8px;">Süreler</h4>
+                ${regex.deadlines.map(d => `<div style="font-size:0.8rem;padding:4px 0;"><span style="color:var(--accent2);">m.${d.article}</span> ⏱ ${d.text}</div>`).join('')}` : ''}
+        `;
+    }
+})();
+
+// ============================================================
+// #10 — MEVZUAT ARAMA (AI destekli)
+// ============================================================
+(function() {
+    let searchHistory = JSON.parse(localStorage.getItem('mevzuatSearchHistory') || '[]');
+
+    window.searchMevzuat = async function() {
+        const query = document.getElementById('mevzuatSearchInput')?.value?.trim();
+        if (!query) { toast('Arama terimi girin', 'info'); return; }
+
+        const apiKey = DB.data.settings?.geminiApiKey;
+        if (!apiKey) { toast('Ayarlar → Gemini API Key gerekli', 'error'); return; }
+
+        const el = document.getElementById('mevzuatSearchResult');
+        if (!el) return;
+        el.style.display = 'block';
+        el.innerHTML = '<div style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin"></i> Aranıyor...</div>';
+
+        const prompt = `Sen Türk hukuku uzmanısın. Aşağıdaki sorguyu analiz et ve ilgili mevzuat bilgisini ver.
+
+Sorgu: "${query}"
+
+JSON formatında yanıt ver:
+{
+  "kanun_adi": "İlgili kanun adı",
+  "madde_no": "Madde numarası (varsa)",
+  "madde_metni": "Maddenin tam veya özet metni",
+  "aciklama": "Maddenin ne anlama geldiği, günlük dilde açıklama",
+  "iliskili_maddeler": [{"madde":"madde referansı","konu":"kısa açıklama"}],
+  "yargitay_kararlari": ["İlgili içtihat özeti 1", "İlgili içtihat özeti 2"],
+  "pratik_bilgi": "Avukat olarak bu maddeyle ilgili dikkat edilmesi gerekenler",
+  "ornek_kullanim": "Bu maddenin pratikte nasıl kullanıldığına dair örnek"
+}`;
+
+        try {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 3000 } })
+            });
+            const data = await resp.json();
+            const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const jm = aiText.match(/\{[\s\S]*\}/);
+            const result = jm ? JSON.parse(jm[0]) : null;
+
+            if (result) {
+                // Save to history
+                searchHistory.unshift({ query, result, date: new Date().toISOString() });
+                if (searchHistory.length > 20) searchHistory.pop();
+                localStorage.setItem('mevzuatSearchHistory', JSON.stringify(searchHistory));
+
+                el.innerHTML = `
+                    <div style="padding:16px;background:var(--bg-secondary);border-radius:10px;">
+                        <h3 style="margin:0 0 8px;color:var(--primary);"><i class="fas fa-balance-scale"></i> ${result.kanun_adi || query}</h3>
+                        ${result.madde_no ? `<div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:12px;">Madde ${result.madde_no}</div>` : ''}
+                        ${result.madde_metni ? `<div style="padding:12px;background:var(--bg-primary);border-left:3px solid var(--primary);border-radius:0 6px 6px 0;margin-bottom:12px;font-size:0.85rem;line-height:1.6;">${result.madde_metni}</div>` : ''}
+                        <div style="margin-bottom:12px;"><h4 style="font-size:0.85rem;margin-bottom:4px;">Açıklama</h4><p style="font-size:0.82rem;line-height:1.5;">${result.aciklama || ''}</p></div>
+                        ${result.pratik_bilgi ? `<div style="padding:10px;background:rgba(74,108,247,0.08);border-radius:6px;margin-bottom:12px;"><h4 style="font-size:0.82rem;color:var(--primary);margin-bottom:4px;">💡 Pratik Bilgi</h4><p style="font-size:0.8rem;line-height:1.5;">${result.pratik_bilgi}</p></div>` : ''}
+                        ${result.ornek_kullanim ? `<div style="padding:10px;background:rgba(46,204,113,0.08);border-radius:6px;margin-bottom:12px;"><h4 style="font-size:0.82rem;color:var(--accent2);margin-bottom:4px;">📋 Örnek Kullanım</h4><p style="font-size:0.8rem;">${result.ornek_kullanim}</p></div>` : ''}
+                        ${result.iliskili_maddeler?.length ? `<div style="margin-bottom:12px;"><h4 style="font-size:0.85rem;margin-bottom:4px;">İlişkili Maddeler</h4>${result.iliskili_maddeler.map(r => `<div style="font-size:0.8rem;padding:4px 0;cursor:pointer;color:var(--primary);" onclick="document.getElementById('mevzuatSearchInput').value='${r.madde}';searchMevzuat();">→ ${r.madde}: ${r.konu}</div>`).join('')}</div>` : ''}
+                        ${result.yargitay_kararlari?.length ? `<div><h4 style="font-size:0.85rem;margin-bottom:4px;">İlgili İçtihatlar</h4>${result.yargitay_kararlari.map(y => `<div style="font-size:0.8rem;padding:4px 0;border-bottom:1px dashed var(--border-color);">⚖️ ${y}</div>`).join('')}</div>` : ''}
+                        <button class="btn btn-sm btn-outline" style="margin-top:12px;" onclick="insertMevzuatToPetition('${(result.kanun_adi || '').replace(/'/g, '')}','${(result.madde_no || '').replace(/'/g, '')}')">
+                            <i class="fas fa-paste"></i> Dilekçeye Ekle
+                        </button>
+                    </div>
+                `;
+                renderSearchHistory();
+            } else {
+                el.innerHTML = '<p style="color:var(--text-secondary);">Sonuç bulunamadı.</p>';
+            }
+        } catch (e) {
+            el.innerHTML = `<p style="color:var(--accent1);">Hata: ${e.message}</p>`;
+        }
+    };
+
+    window.insertMevzuatToPetition = function(kanun, madde) {
+        const bodyEl = document.getElementById('petitionBody');
+        if (bodyEl) {
+            bodyEl.value += `\n\n${kanun}${madde ? ' m.' + madde : ''} gereğince...`;
+            toast('Dilekçeye eklendi', 'success');
+        } else {
+            toast('Önce dilekçe editörünü açın', 'info');
+        }
+    };
+
+    function renderSearchHistory() {
+        const el = document.getElementById('mevzuatSearchHistory');
+        if (!el || !searchHistory.length) return;
+        el.innerHTML = `<h4 style="font-size:0.85rem;margin-bottom:8px;">Son Aramalar</h4>
+            ${searchHistory.slice(0, 10).map(h => `<div style="display:flex;justify-content:space-between;padding:6px 8px;background:var(--bg-secondary);border-radius:6px;margin-bottom:4px;cursor:pointer;" onclick="document.getElementById('mevzuatSearchInput').value='${h.query.replace(/'/g, '')}';searchMevzuat();">
+                <span style="font-size:0.8rem;">${h.query}</span>
+                <span style="font-size:0.72rem;color:var(--text-secondary);">${new Date(h.date).toLocaleDateString('tr-TR')}</span>
+            </div>`).join('')}`;
+    }
+    setTimeout(renderSearchHistory, 1000);
+})();
+
+// ============================================================
+// #4 — HUKUKİ GÖRÜŞ YÖNETİMİ
+// ============================================================
+(function() {
+    const STATUS_LABELS = { taslak: 'Taslak', onay_bekliyor: 'Onay Bekliyor', onaylandi: 'Onaylandı', reddedildi: 'Reddedildi', arsivlendi: 'Arşivlendi' };
+    const STATUS_COLORS = { taslak: 'var(--text-secondary)', onay_bekliyor: 'var(--accent3)', onaylandi: 'var(--accent2)', reddedildi: 'var(--accent1)', arsivlendi: '#9b59b6' };
+    const PRIORITY_LABELS = { acil: 'Acil', yuksek: 'Yüksek', normal: 'Normal', dusuk: 'Düşük' };
+    const PRIORITY_COLORS = { acil: 'var(--accent1)', yuksek: 'var(--accent3)', normal: 'var(--primary)', dusuk: 'var(--text-secondary)' };
+
+    function getOpinions() { return DB.data.opinions || []; }
+    function saveOpinions(arr) { DB.data.opinions = arr; DB.save(); }
+
+    function generateRefNumber() {
+        const year = new Date().getFullYear();
+        const prefix = `HG-${year}-`;
+        const existing = getOpinions().filter(o => o.refNo?.startsWith(prefix));
+        const maxSeq = existing.reduce((max, o) => {
+            const seq = parseInt(o.refNo.replace(prefix, ''), 10);
+            return seq > max ? seq : max;
+        }, 0);
+        return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+    }
+
+    window.renderOpinions = function() {
+        const el = document.getElementById('opinionsList');
+        if (!el) return;
+        const search = (document.getElementById('opinionSearchInput')?.value || '').toLowerCase();
+        const statusFilter = document.getElementById('opinionStatusFilter')?.value || '';
+        const priorityFilter = document.getElementById('opinionPriorityFilter')?.value || '';
+
+        let opinions = getOpinions().filter(o => !o.deleted);
+        if (search) opinions = opinions.filter(o => (o.title + o.content + o.refNo).toLowerCase().includes(search));
+        if (statusFilter) opinions = opinions.filter(o => o.status === statusFilter);
+        if (priorityFilter) opinions = opinions.filter(o => o.priority === priorityFilter);
+        opinions.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+
+        if (!opinions.length) { el.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:40px;">Henüz görüş yok. "Yeni Görüş" ile başlayın.</p>'; return; }
+
+        el.innerHTML = opinions.map(o => `
+            <div class="form-card" style="margin-bottom:10px;cursor:pointer;" onclick="viewOpinion('${o.id}')">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span style="font-size:0.72rem;color:var(--text-secondary);font-family:monospace;">${o.refNo}</span>
+                        <span style="padding:2px 8px;border-radius:10px;font-size:0.7rem;background:${STATUS_COLORS[o.status]}22;color:${STATUS_COLORS[o.status]};margin-left:6px;">${STATUS_LABELS[o.status]}</span>
+                        <span style="padding:2px 8px;border-radius:10px;font-size:0.7rem;background:${PRIORITY_COLORS[o.priority]}22;color:${PRIORITY_COLORS[o.priority]};margin-left:4px;">${PRIORITY_LABELS[o.priority]}</span>
+                    </div>
+                    <span style="font-size:0.72rem;color:var(--text-secondary);">${new Date(o.updatedAt || o.createdAt).toLocaleDateString('tr-TR')}</span>
+                </div>
+                <h3 style="margin:8px 0 4px;font-size:1rem;">${o.title}</h3>
+                <p style="font-size:0.8rem;color:var(--text-secondary);margin:0;">${(o.content || '').replace(/<[^>]*>/g, '').substring(0, 150)}...</p>
+                ${o.deadline ? `<div style="font-size:0.72rem;color:${new Date(o.deadline) < new Date() ? 'var(--accent1)' : 'var(--accent3)'};margin-top:4px;">⏰ Son tarih: ${new Date(o.deadline).toLocaleDateString('tr-TR')}</div>` : ''}
+                <div style="font-size:0.72rem;color:var(--text-secondary);margin-top:4px;">Versiyon: v${o.versions?.length || 1} | Yazar: ${o.author || 'Avukat 1'}</div>
+            </div>
+        `).join('');
+    };
+
+    window.openOpinionEditor = function(id) {
+        const existing = document.getElementById('opinionEditorModal');
+        if (existing) existing.remove();
+
+        const opinion = id ? getOpinions().find(o => o.id === id) : null;
+
+        const modal = document.createElement('div');
+        modal.id = 'opinionEditorModal';
+        modal.className = 'modal active';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10002;';
+
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:700px;max-height:90vh;overflow-y:auto;background:var(--bg-primary);border-radius:12px;padding:24px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h3>${opinion ? 'Görüş Düzenle' : 'Yeni Hukuki Görüş'}</h3>
+                    <button class="btn btn-sm btn-outline" onclick="this.closest('#opinionEditorModal').remove()">&times;</button>
+                </div>
+                <div class="form-group"><label>Başlık</label><input type="text" id="opEditTitle" value="${opinion?.title || ''}" placeholder="Görüş başlığı"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Öncelik</label><select id="opEditPriority">
+                        ${Object.entries(PRIORITY_LABELS).map(([k, v]) => `<option value="${k}" ${opinion?.priority === k ? 'selected' : ''}>${v}</option>`).join('')}
+                    </select></div>
+                    <div class="form-group"><label>Son Tarih</label><input type="date" id="opEditDeadline" value="${opinion?.deadline || ''}"></div>
+                </div>
+                <div class="form-group"><label>Konu / Kategori</label><input type="text" id="opEditCategory" value="${opinion?.category || ''}" placeholder="Ör: Vergi Hukuku, İş Hukuku..."></div>
+                <div class="form-group"><label>Etiketler (virgülle ayır)</label><input type="text" id="opEditTags" value="${(opinion?.tags || []).join(', ')}" placeholder="kvkk, tazminat, acil"></div>
+                <div class="form-group"><label>İçerik</label><textarea id="opEditContent" rows="14" style="font-size:0.85rem;">${opinion?.content || ''}</textarea></div>
+                ${opinion?.status === 'taslak' || !opinion ? '' : `<div class="form-group"><label>Değişiklik Özeti</label><input type="text" id="opEditChangeSummary" placeholder="Bu düzenlemede ne değişti?"></div>`}
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-primary" onclick="saveOpinionFromEditor('${opinion?.id || ''}')"><i class="fas fa-save"></i> Kaydet</button>
+                    ${opinion && opinion.status === 'taslak' ? `<button class="btn btn-outline" onclick="submitOpinionForApproval('${opinion.id}')"><i class="fas fa-paper-plane"></i> Onaya Gönder</button>` : ''}
+                    ${opinion ? `<button class="btn btn-sm" style="margin-left:auto;color:var(--accent1);" onclick="deleteOpinion('${opinion.id}')"><i class="fas fa-trash"></i></button>` : ''}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    };
+
+    window.saveOpinionFromEditor = function(existingId) {
+        const title = document.getElementById('opEditTitle')?.value;
+        if (!title) { toast('Başlık gerekli', 'info'); return; }
+
+        const opinions = getOpinions();
+        const now = new Date().toISOString();
+        const content = document.getElementById('opEditContent')?.value || '';
+        const tags = (document.getElementById('opEditTags')?.value || '').split(',').map(t => t.trim()).filter(Boolean);
+
+        if (existingId) {
+            const op = opinions.find(o => o.id === existingId);
+            if (op) {
+                // Create version
+                if (!op.versions) op.versions = [];
+                op.versions.push({ v: op.versions.length + 1, title: op.title, content: op.content, changedBy: localStorage.getItem('currentUser') || 'Avukat 1', summary: document.getElementById('opEditChangeSummary')?.value || '', date: now });
+                op.title = title;
+                op.content = content;
+                op.priority = document.getElementById('opEditPriority')?.value || 'normal';
+                op.deadline = document.getElementById('opEditDeadline')?.value || '';
+                op.category = document.getElementById('opEditCategory')?.value || '';
+                op.tags = tags;
+                op.updatedAt = now;
+            }
+        } else {
+            opinions.push({
+                id: genId(), refNo: generateRefNumber(), title, content,
+                status: 'taslak', priority: document.getElementById('opEditPriority')?.value || 'normal',
+                deadline: document.getElementById('opEditDeadline')?.value || '',
+                category: document.getElementById('opEditCategory')?.value || '', tags,
+                author: localStorage.getItem('currentUser') || 'Avukat 1',
+                versions: [{ v: 1, title, content, changedBy: localStorage.getItem('currentUser') || 'Avukat 1', summary: 'İlk oluşturma', date: now }],
+                createdAt: now, updatedAt: now
+            });
+        }
+        saveOpinions(opinions);
+        document.getElementById('opinionEditorModal')?.remove();
+        renderOpinions();
+        toast('Görüş kaydedildi', 'success');
+    };
+
+    window.submitOpinionForApproval = function(id) {
+        const opinions = getOpinions();
+        const op = opinions.find(o => o.id === id);
+        if (op) { op.status = 'onay_bekliyor'; op.updatedAt = new Date().toISOString(); saveOpinions(opinions); }
+        document.getElementById('opinionEditorModal')?.remove();
+        renderOpinions();
+        toast('Onaya gönderildi', 'success');
+    };
+
+    window.viewOpinion = function(id) {
+        const op = getOpinions().find(o => o.id === id);
+        if (!op) return;
+
+        const existing = document.getElementById('opinionViewModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'opinionViewModal';
+        modal.className = 'modal active';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10002;';
+
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:700px;max-height:90vh;overflow-y:auto;background:var(--bg-primary);border-radius:12px;padding:24px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <div>
+                        <span style="font-family:monospace;font-size:0.78rem;color:var(--text-secondary);">${op.refNo}</span>
+                        <span style="padding:2px 8px;border-radius:10px;font-size:0.7rem;background:${STATUS_COLORS[op.status]}22;color:${STATUS_COLORS[op.status]};margin-left:6px;">${STATUS_LABELS[op.status]}</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline" onclick="this.closest('#opinionViewModal').remove()">&times;</button>
+                </div>
+                <h2 style="margin:0 0 12px;">${op.title}</h2>
+                <div style="display:flex;gap:12px;margin-bottom:16px;font-size:0.78rem;color:var(--text-secondary);">
+                    <span>Yazar: ${op.author}</span>
+                    <span>Kategori: ${op.category || '-'}</span>
+                    <span>Öncelik: ${PRIORITY_LABELS[op.priority]}</span>
+                    ${op.deadline ? `<span style="color:${new Date(op.deadline) < new Date() ? 'var(--accent1)' : 'var(--accent3)'};">Deadline: ${new Date(op.deadline).toLocaleDateString('tr-TR')}</span>` : ''}
+                </div>
+                ${op.tags?.length ? `<div style="margin-bottom:12px;">${op.tags.map(t => `<span style="padding:2px 8px;background:var(--primary)22;color:var(--primary);border-radius:10px;font-size:0.72rem;margin-right:4px;">${t}</span>`).join('')}</div>` : ''}
+                <div style="padding:16px;background:var(--bg-secondary);border-radius:8px;margin-bottom:16px;line-height:1.7;font-size:0.88rem;white-space:pre-wrap;">${op.content}</div>
+                ${op.versions?.length > 1 ? `<div style="margin-bottom:16px;"><h4 style="font-size:0.85rem;margin-bottom:8px;">Versiyon Geçmişi (${op.versions.length})</h4>
+                    ${op.versions.map(v => `<div style="padding:6px 8px;background:var(--bg-secondary);border-radius:6px;margin-bottom:4px;font-size:0.78rem;display:flex;justify-content:space-between;">
+                        <span>v${v.v} — ${v.summary || 'Düzenleme'} (${v.changedBy})</span>
+                        <span style="color:var(--text-secondary);">${new Date(v.date).toLocaleDateString('tr-TR')}</span>
+                    </div>`).join('')}
+                </div>` : ''}
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-outline" onclick="this.closest('#opinionViewModal').remove();openOpinionEditor('${op.id}')"><i class="fas fa-edit"></i> Düzenle</button>
+                    ${op.status === 'onay_bekliyor' ? `<button class="btn btn-primary" onclick="approveOpinion('${op.id}', true)"><i class="fas fa-check"></i> Onayla</button><button class="btn btn-outline" style="color:var(--accent1);" onclick="approveOpinion('${op.id}', false)"><i class="fas fa-times"></i> Reddet</button>` : ''}
+                    ${op.status === 'onaylandi' ? `<button class="btn btn-outline" onclick="archiveOpinion('${op.id}')"><i class="fas fa-archive"></i> Arşivle</button>` : ''}
+                    <button class="btn btn-outline" onclick="generateOpinionAISummary('${op.id}')"><i class="fas fa-robot"></i> AI Özet</button>
+                </div>
+                <div id="opinionAISummary" style="margin-top:12px;"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    };
+
+    window.approveOpinion = function(id, approve) {
+        const opinions = getOpinions();
+        const op = opinions.find(o => o.id === id);
+        if (op) { op.status = approve ? 'onaylandi' : 'reddedildi'; op.updatedAt = new Date().toISOString(); saveOpinions(opinions); }
+        document.getElementById('opinionViewModal')?.remove();
+        renderOpinions();
+        toast(approve ? 'Görüş onaylandı' : 'Görüş reddedildi', approve ? 'success' : 'info');
+    };
+
+    window.archiveOpinion = function(id) {
+        const opinions = getOpinions();
+        const op = opinions.find(o => o.id === id);
+        if (op) { op.status = 'arsivlendi'; op.updatedAt = new Date().toISOString(); saveOpinions(opinions); }
+        document.getElementById('opinionViewModal')?.remove();
+        renderOpinions();
+        toast('Arşivlendi', 'success');
+    };
+
+    window.deleteOpinion = function(id) {
+        if (!confirm('Bu görüşü silmek istediğinize emin misiniz?')) return;
+        const opinions = getOpinions();
+        const op = opinions.find(o => o.id === id);
+        if (op) { op.deleted = true; op.deletedAt = new Date().toISOString(); saveOpinions(opinions); }
+        document.getElementById('opinionEditorModal')?.remove();
+        document.getElementById('opinionViewModal')?.remove();
+        renderOpinions();
+        toast('Silindi', 'success');
+    };
+
+    window.generateOpinionAISummary = async function(id) {
+        const op = getOpinions().find(o => o.id === id);
+        if (!op) return;
+        const apiKey = DB.data.settings?.geminiApiKey;
+        if (!apiKey) { toast('Gemini API Key gerekli', 'error'); return; }
+        const el = document.getElementById('opinionAISummary');
+        if (el) el.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Özet hazırlanıyor...';
+        try {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: `Bu hukuki görüşün 3-5 cümlelik profesyonel özetini yaz:\n\nBaşlık: ${op.title}\nKategori: ${op.category}\n\n${op.content}` }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 500 } })
+            });
+            const data = await resp.json();
+            const summary = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (el) el.innerHTML = `<div style="padding:10px;background:rgba(74,108,247,0.08);border-radius:6px;font-size:0.82rem;"><strong>AI Özet:</strong> ${summary}</div>`;
+            // Save summary
+            const opinions = getOpinions();
+            const o = opinions.find(x => x.id === id);
+            if (o) { o.aiSummary = summary; saveOpinions(opinions); }
+        } catch (e) { if (el) el.innerHTML = `<p style="color:var(--accent1);">Hata: ${e.message}</p>`; }
+    };
+})();
+
+// ============================================================
+// #9 — MADDE KÜTÜPHANESİ
+// ============================================================
+(function() {
+    const CLAUSE_CATEGORIES = {
+        'cezai-sart': 'Cezai Şart', 'mucbir-sebep': 'Mücbir Sebep', 'fesih': 'Fesih Koşulları',
+        'gizlilik': 'Gizlilik', 'odeme': 'Ödeme Koşulları', 'uyusmazlik': 'Uyuşmazlık Çözümü',
+        'kvkk': 'KVKK Uyum', 'rekabet': 'Rekabet Yasağı', 'tazminat': 'Tazminat',
+        'sure': 'Süre & Uzatma', 'teminat': 'Teminat', 'diger': 'Diğer'
+    };
+
+    function getClauses() { return DB.data.clauseLibrary || []; }
+    function saveClauses(arr) { DB.data.clauseLibrary = arr; DB.save(); }
+
+    window.renderClauses = function() {
+        const el = document.getElementById('clausesList');
+        if (!el) return;
+        const search = (document.getElementById('clauseSearchInput')?.value || '').toLowerCase();
+        const catFilter = document.getElementById('clauseCategoryFilter')?.value || '';
+
+        let clauses = getClauses();
+        if (search) clauses = clauses.filter(c => (c.title + c.body + c.tags?.join(' ')).toLowerCase().includes(search));
+        if (catFilter) clauses = clauses.filter(c => c.category === catFilter);
+
+        if (!clauses.length) { el.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:40px;">Kütüphanede madde yok. "Yeni Madde" ile ekleyin.</p>'; return; }
+
+        el.innerHTML = clauses.map(c => `
+            <div class="form-card" style="margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span style="padding:2px 8px;border-radius:10px;font-size:0.7rem;background:var(--primary)22;color:var(--primary);">${CLAUSE_CATEGORIES[c.category] || c.category}</span>
+                        ${c.version ? `<span style="font-size:0.7rem;color:var(--text-secondary);margin-left:6px;">v${c.version}</span>` : ''}
+                    </div>
+                    <div style="display:flex;gap:4px;">
+                        <button class="btn btn-sm btn-outline" onclick="copyClauseToClipboard('${c.id}')" title="Kopyala"><i class="fas fa-copy"></i></button>
+                        <button class="btn btn-sm btn-outline" onclick="openClauseEditor('${c.id}')" title="Düzenle"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-outline" onclick="deleteClause('${c.id}')" title="Sil" style="color:var(--accent1);"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+                <h3 style="margin:8px 0 4px;font-size:0.95rem;">${c.title}</h3>
+                <pre style="font-size:0.78rem;color:var(--text-secondary);white-space:pre-wrap;margin:0;max-height:100px;overflow:hidden;">${c.body.substring(0, 300)}${c.body.length > 300 ? '...' : ''}</pre>
+                ${c.tags?.length ? `<div style="margin-top:6px;">${c.tags.map(t => `<span style="padding:1px 6px;background:var(--bg-hover);border-radius:8px;font-size:0.68rem;">${t}</span>`).join(' ')}</div>` : ''}
+            </div>
+        `).join('');
+    };
+
+    window.openClauseEditor = function(id) {
+        const clause = id ? getClauses().find(c => c.id === id) : null;
+        const existing = document.getElementById('clauseEditorModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'clauseEditorModal';
+        modal.className = 'modal active';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10002;';
+
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:600px;max-height:85vh;overflow-y:auto;background:var(--bg-primary);border-radius:12px;padding:24px;">
+                <h3 style="margin-bottom:16px;">${clause ? 'Madde Düzenle' : 'Yeni Madde'}</h3>
+                <div class="form-group"><label>Başlık</label><input type="text" id="clEditTitle" value="${clause?.title || ''}" placeholder="Ör: Mücbir Sebep - Güçlü versiyon"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Kategori</label><select id="clEditCategory">
+                        ${Object.entries(CLAUSE_CATEGORIES).map(([k, v]) => `<option value="${k}" ${clause?.category === k ? 'selected' : ''}>${v}</option>`).join('')}
+                    </select></div>
+                    <div class="form-group"><label>Versiyon</label><input type="text" id="clEditVersion" value="${clause?.version || '1'}" placeholder="1"></div>
+                </div>
+                <div class="form-group"><label>Etiketler (virgülle ayır)</label><input type="text" id="clEditTags" value="${(clause?.tags || []).join(', ')}" placeholder="müvekkil lehine, güçlü, standart"></div>
+                <div class="form-group"><label>Madde Metni</label><textarea id="clEditBody" rows="10" style="font-family:monospace;font-size:0.82rem;">${clause?.body || ''}</textarea>
+                    <small style="color:var(--text-secondary);">Değişkenler: {{müvekkil}}, {{tarih}}, {{tutar}}, {{süre}}</small>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary" onclick="saveClauseFromEditor('${clause?.id || ''}')"><i class="fas fa-save"></i> Kaydet</button>
+                    <button class="btn btn-outline" onclick="this.closest('#clauseEditorModal').remove()">İptal</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    };
+
+    window.saveClauseFromEditor = function(existingId) {
+        const title = document.getElementById('clEditTitle')?.value;
+        if (!title) { toast('Başlık gerekli', 'info'); return; }
+        const clauses = getClauses();
+        const data = {
+            title, body: document.getElementById('clEditBody')?.value || '',
+            category: document.getElementById('clEditCategory')?.value || 'diger',
+            version: document.getElementById('clEditVersion')?.value || '1',
+            tags: (document.getElementById('clEditTags')?.value || '').split(',').map(t => t.trim()).filter(Boolean),
+            updatedAt: new Date().toISOString()
+        };
+        if (existingId) {
+            const idx = clauses.findIndex(c => c.id === existingId);
+            if (idx >= 0) Object.assign(clauses[idx], data);
+        } else {
+            clauses.push({ id: genId(), ...data, createdAt: new Date().toISOString() });
+        }
+        saveClauses(clauses);
+        document.getElementById('clauseEditorModal')?.remove();
+        renderClauses();
+        toast('Madde kaydedildi', 'success');
+    };
+
+    window.deleteClause = function(id) {
+        if (!confirm('Bu maddeyi silmek istediğinize emin misiniz?')) return;
+        saveClauses(getClauses().filter(c => c.id !== id));
+        renderClauses();
+        toast('Silindi', 'success');
+    };
+
+    window.copyClauseToClipboard = function(id) {
+        const clause = getClauses().find(c => c.id === id);
+        if (!clause) return;
+        const text = window.applyTemplateVariables ? window.applyTemplateVariables(clause.body) : clause.body;
+        navigator.clipboard.writeText(text).then(() => toast('Panoya kopyalandı', 'success')).catch(() => toast('Kopyalama başarısız', 'error'));
+    };
+})();
+
+// ============================================================
+// #3 — MEVZUAT TAKİP SİSTEMİ (regwatch patterns)
+// ============================================================
+(function() {
+    const SOURCES = [
+        { id: 'resmi-gazete', name: 'Resmi Gazete', icon: 'fa-newspaper', url: 'https://www.resmigazete.gov.tr' },
+        { id: 'spk', name: 'SPK', icon: 'fa-chart-line', url: 'https://spk.gov.tr' },
+        { id: 'kvkk', name: 'KVKK', icon: 'fa-shield-alt', url: 'https://kvkk.gov.tr' },
+        { id: 'tcmb', name: 'TCMB', icon: 'fa-university', url: 'https://tcmb.gov.tr' },
+        { id: 'reklamkurulu', name: 'Reklam Kurulu', icon: 'fa-bullhorn', url: 'https://ticaret.gov.tr' },
+    ];
+
+    const SEVERITY_KEYWORDS = {
+        kritik: ['ceza', 'para cezası', 'idari para ceza', 'iptal', 'lisans iptali', 'yasaklama', 'ihlal', 'veri ihlali', 'durdurma', 'tasfiye', 'iflas'],
+        onemli: ['yönetmelik', 'tebliğ', 'değişiklik', 'düzenleme', 'kanun', 'mevzuat', 'izin', 'lisans', 'genelge', 'karar'],
+        bilgi: ['duyuru', 'bilgilendirme', 'ilan', 'toplantı', 'rapor', 'istatistik', 'atama']
+    };
+
+    const SEVERITY_LABELS = { kritik: '🔴 Kritik', onemli: '🟡 Önemli', bilgi: '🟢 Bilgi' };
+    const SEVERITY_COLORS = { kritik: 'var(--accent1)', onemli: 'var(--accent3)', bilgi: 'var(--accent2)' };
+
+    function getRegulations() { return DB.data.regulations || []; }
+    function saveRegulations(arr) { DB.data.regulations = arr; DB.save(); }
+
+    function classifySeverity(text) {
+        const lower = text.toLowerCase();
+        for (const kw of SEVERITY_KEYWORDS.kritik) { if (lower.includes(kw)) return 'kritik'; }
+        for (const kw of SEVERITY_KEYWORDS.onemli) { if (lower.includes(kw)) return 'onemli'; }
+        return 'bilgi';
+    }
+
+    window.renderRegulations = function() {
+        const el = document.getElementById('regulationsList');
+        if (!el) return;
+        const search = (document.getElementById('regSearchInput')?.value || '').toLowerCase();
+        const srcFilter = document.getElementById('regSourceFilter')?.value || '';
+        const impFilter = document.getElementById('regImportanceFilter')?.value || '';
+
+        let regs = getRegulations();
+        if (search) regs = regs.filter(r => (r.title + r.summary + r.source).toLowerCase().includes(search));
+        if (srcFilter) regs = regs.filter(r => r.source === srcFilter);
+        if (impFilter) regs = regs.filter(r => r.severity === impFilter);
+        regs.sort((a, b) => new Date(b.date || b.addedAt) - new Date(a.date || a.addedAt));
+
+        // Stats
+        const statsEl = document.getElementById('regStats');
+        if (statsEl) {
+            const all = getRegulations();
+            const kritik = all.filter(r => r.severity === 'kritik').length;
+            const onemli = all.filter(r => r.severity === 'onemli').length;
+            const bilgi = all.filter(r => r.severity === 'bilgi').length;
+            statsEl.innerHTML = `
+                <div style="padding:10px;background:var(--bg-secondary);border-radius:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">${all.length}</div><div style="font-size:0.72rem;color:var(--text-secondary);">Toplam</div></div>
+                <div style="padding:10px;background:var(--bg-secondary);border-radius:8px;text-align:center;border-top:3px solid var(--accent1);"><div style="font-size:1.2rem;font-weight:700;color:var(--accent1);">${kritik}</div><div style="font-size:0.72rem;">Kritik</div></div>
+                <div style="padding:10px;background:var(--bg-secondary);border-radius:8px;text-align:center;border-top:3px solid var(--accent3);"><div style="font-size:1.2rem;font-weight:700;color:var(--accent3);">${onemli}</div><div style="font-size:0.72rem;">Önemli</div></div>
+                <div style="padding:10px;background:var(--bg-secondary);border-radius:8px;text-align:center;border-top:3px solid var(--accent2);"><div style="font-size:1.2rem;font-weight:700;color:var(--accent2);">${bilgi}</div><div style="font-size:0.72rem;">Bilgi</div></div>
+            `;
+        }
+
+        if (!regs.length) { el.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:40px;">Kayıtlı düzenleme yok. "Manuel Ekle" veya "Güncelle" ile başlayın.</p>'; return; }
+
+        el.innerHTML = regs.map(r => {
+            const src = SOURCES.find(s => s.id === r.source);
+            return `<div class="form-card" style="margin-bottom:10px;border-left:3px solid ${SEVERITY_COLORS[r.severity] || 'var(--border-color)'};">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span style="font-size:0.7rem;color:var(--text-secondary);"><i class="fas ${src?.icon || 'fa-file'}"></i> ${src?.name || r.source}</span>
+                        <span style="padding:2px 8px;border-radius:10px;font-size:0.7rem;background:${SEVERITY_COLORS[r.severity]}22;color:${SEVERITY_COLORS[r.severity]};margin-left:6px;">${SEVERITY_LABELS[r.severity] || r.severity}</span>
+                        ${r.read ? '' : '<span style="padding:2px 6px;border-radius:10px;font-size:0.65rem;background:var(--primary);color:#fff;margin-left:4px;">YENİ</span>'}
+                    </div>
+                    <span style="font-size:0.72rem;color:var(--text-secondary);">${r.date ? new Date(r.date).toLocaleDateString('tr-TR') : ''}</span>
+                </div>
+                <h3 style="margin:8px 0 4px;font-size:0.95rem;cursor:pointer;" onclick="viewRegulation('${r.id}')">${r.title}</h3>
+                <p style="font-size:0.8rem;color:var(--text-secondary);margin:0;">${(r.summary || '').substring(0, 150)}</p>
+                ${r.tags?.length ? `<div style="margin-top:6px;">${r.tags.map(t => `<span style="padding:1px 6px;background:var(--bg-hover);border-radius:8px;font-size:0.68rem;">${t}</span>`).join(' ')}</div>` : ''}
+            </div>`;
+        }).join('');
+    };
+
+    window.addManualRegulation = function() {
+        const existing = document.getElementById('regEditorModal');
+        if (existing) existing.remove();
+        const modal = document.createElement('div');
+        modal.id = 'regEditorModal';
+        modal.className = 'modal active';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10002;';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:600px;background:var(--bg-primary);border-radius:12px;padding:24px;">
+                <h3 style="margin-bottom:16px;">Yeni Düzenleme Ekle</h3>
+                <div class="form-group"><label>Başlık</label><input type="text" id="regEditTitle" placeholder="Düzenleme başlığı"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Kaynak</label><select id="regEditSource">
+                        ${SOURCES.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                        <option value="diger">Diğer</option>
+                    </select></div>
+                    <div class="form-group"><label>Tarih</label><input type="date" id="regEditDate" value="${new Date().toISOString().split('T')[0]}"></div>
+                </div>
+                <div class="form-group"><label>Özet / İçerik</label><textarea id="regEditSummary" rows="6" placeholder="Düzenlemenin özeti veya tam metni..."></textarea></div>
+                <div class="form-group"><label>Etiketler</label><input type="text" id="regEditTags" placeholder="kvkk, finans, ceza (virgülle ayır)"></div>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary" onclick="saveManualRegulation()"><i class="fas fa-save"></i> Kaydet</button>
+                    <button class="btn btn-outline" onclick="saveAndAnalyzeRegulation()"><i class="fas fa-robot"></i> Kaydet & AI Analiz</button>
+                    <button class="btn btn-outline" onclick="this.closest('#regEditorModal').remove()">İptal</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    };
+
+    window.saveManualRegulation = function() {
+        const title = document.getElementById('regEditTitle')?.value;
+        if (!title) { toast('Başlık gerekli', 'info'); return; }
+        const regs = getRegulations();
+        const summary = document.getElementById('regEditSummary')?.value || '';
+        regs.push({
+            id: genId(), title, source: document.getElementById('regEditSource')?.value || 'diger',
+            date: document.getElementById('regEditDate')?.value || new Date().toISOString().split('T')[0],
+            summary, severity: classifySeverity(title + ' ' + summary),
+            tags: (document.getElementById('regEditTags')?.value || '').split(',').map(t => t.trim()).filter(Boolean),
+            read: false, addedAt: new Date().toISOString()
+        });
+        saveRegulations(regs);
+        document.getElementById('regEditorModal')?.remove();
+        renderRegulations();
+        toast('Düzenleme kaydedildi', 'success');
+    };
+
+    window.saveAndAnalyzeRegulation = async function() {
+        window.saveManualRegulation();
+        const regs = getRegulations();
+        const last = regs[regs.length - 1];
+        if (!last) return;
+        const apiKey = DB.data.settings?.geminiApiKey;
+        if (!apiKey) { toast('AI analiz için Gemini API Key gerekli', 'info'); return; }
+        try {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: `Bu düzenlemeyi analiz et. Önem derecesini (kritik/onemli/bilgi) ve kısa özetini ver. JSON: {"onem":"kritik/onemli/bilgi","ozet":"max 3 cümle","etiketler":["tag1","tag2"]}\n\n${last.title}\n${last.summary}` }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 500 } })
+            });
+            const data = await resp.json();
+            const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const jm = aiText.match(/\{[\s\S]*\}/);
+            if (jm) {
+                const ai = JSON.parse(jm[0]);
+                last.severity = ai.onem || last.severity;
+                last.aiSummary = ai.ozet || '';
+                if (ai.etiketler) last.tags = [...new Set([...(last.tags || []), ...ai.etiketler])];
+                saveRegulations(regs);
+                renderRegulations();
+                toast('AI analiz tamamlandı', 'success');
+            }
+        } catch (e) { /* silent */ }
+    };
+
+    window.viewRegulation = function(id) {
+        const regs = getRegulations();
+        const r = regs.find(x => x.id === id);
+        if (!r) return;
+        if (!r.read) { r.read = true; saveRegulations(regs); renderRegulations(); }
+        const src = SOURCES.find(s => s.id === r.source);
+        alert(`${SEVERITY_LABELS[r.severity] || ''} ${src?.name || r.source}\n\n${r.title}\n\nTarih: ${r.date}\n\n${r.summary || 'İçerik yok'}\n\n${r.aiSummary ? 'AI Özet: ' + r.aiSummary : ''}`);
+    };
+
+    window.fetchRegulations = async function() {
+        const apiKey = DB.data.settings?.geminiApiKey;
+        if (!apiKey) { toast('AI için Gemini API Key gerekli. Şimdilik manuel ekleme yapabilirsiniz.', 'info'); return; }
+        toast('Mevzuat kaynakları taranıyor... (CORS kısıtlaması nedeniyle AI simülasyonu)', 'info');
+        try {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: `Bugün ${new Date().toLocaleDateString('tr-TR')} tarihinde Türkiye'de yayınlanan veya güncel olan önemli hukuki düzenlemeleri listele. JSON array formatında yanıt ver:
+[{"baslik":"","kaynak":"resmi-gazete/spk/kvkk/tcmb/reklamkurulu","tarih":"YYYY-MM-DD","ozet":"","onem":"kritik/onemli/bilgi","etiketler":["tag1"]}]
+En fazla 5 sonuç ver. Gerçekçi ve güncel bilgiler olsun.` }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 2000 } })
+            });
+            const data = await resp.json();
+            const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const jm = aiText.match(/\[[\s\S]*\]/);
+            if (jm) {
+                const items = JSON.parse(jm[0]);
+                const regs = getRegulations();
+                let added = 0;
+                for (const item of items) {
+                    if (regs.some(r => r.title === item.baslik)) continue;
+                    regs.push({
+                        id: genId(), title: item.baslik, source: item.kaynak || 'diger',
+                        date: item.tarih || new Date().toISOString().split('T')[0],
+                        summary: item.ozet || '', severity: item.onem || 'bilgi',
+                        tags: item.etiketler || [], read: false, addedAt: new Date().toISOString(), aiGenerated: true
+                    });
+                    added++;
+                }
+                saveRegulations(regs);
+                renderRegulations();
+                toast(`${added} yeni düzenleme eklendi`, 'success');
+            }
+        } catch (e) { toast('Güncelleme hatası: ' + e.message, 'error'); }
+    };
+})();
+
+// ============================================================
+// #5 — DOSYA OTOMATİK SINIFLANDIRMA
+// ============================================================
+(function() {
+    const CATEGORIES = {
+        hukuk: { label: 'Hukuk', icon: 'fa-gavel', keywords: ['sözleşme', 'dilekçe', 'mahkeme', 'dava', 'icra', 'tebligat', 'vekaletname', 'karar', 'ihtarname', 'bilirkişi', 'temyiz', 'istinaf'] },
+        gizlilik: { label: 'Gizlilik Sözleşmeleri', icon: 'fa-lock', keywords: ['gizlilik', 'nda', 'non-disclosure', 'confidential'] },
+        muhasebe: { label: 'Muhasebe/Vergi', icon: 'fa-calculator', keywords: ['fatura', 'vergi', 'beyanname', 'muhasebe', 'gelir', 'gider', 'kdv', 'sgk', 'maaş'] },
+        ik: { label: 'İnsan Kaynakları', icon: 'fa-users', keywords: ['özlük', 'işe giriş', 'sgk', 'bordro', 'izin', 'personel'] },
+        pazarlama: { label: 'Pazarlama', icon: 'fa-bullhorn', keywords: ['pazarlama', 'reklam', 'kampanya', 'sunum', 'teklif', 'brosür'] },
+        teknoloji: { label: 'Teknoloji', icon: 'fa-laptop-code', keywords: ['yazılım', 'api', 'sistem', 'kod', 'teknik', 'proje'] },
+        insaat: { label: 'İnşaat', icon: 'fa-hard-hat', keywords: ['inşaat', 'yapı', 'ruhsat', 'imar', 'tapu', 'iskan'] },
+    };
+
+    function normalizeForSearch(text) {
+        return text.toLowerCase().replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ş/g, 's').replace(/ü/g, 'u');
+    }
+
+    function classifyFile(fileName) {
+        const lower = fileName.toLowerCase();
+        const normalized = normalizeForSearch(fileName);
+        let bestCat = 'diger', bestScore = 0;
+        for (const [cat, data] of Object.entries(CATEGORIES)) {
+            let score = 0;
+            for (const kw of data.keywords) {
+                if (lower.includes(kw) || normalized.includes(normalizeForSearch(kw))) score++;
+            }
+            if (score > bestScore) { bestScore = score; bestCat = cat; }
+        }
+        return { category: bestCat, label: CATEGORIES[bestCat]?.label || 'Diğer', score: bestScore };
+    }
+
+    function matchClient(fileName) {
+        const lower = fileName.toLowerCase();
+        const clients = DB.data.clients || [];
+        for (const c of clients) {
+            if (lower.includes(c.name.toLowerCase()) || lower.includes(normalizeForSearch(c.name))) return c.name;
+        }
+        return null;
+    }
+
+    // File drop zone — dosya sınıflandırma aracını Dosya Takibi sayfasına ekle
+    window.classifyUploadedFiles = function(files) {
+        const results = [];
+        for (const file of files) {
+            const classification = classifyFile(file.name);
+            const client = matchClient(file.name);
+            results.push({ name: file.name, size: file.size, ...classification, client });
+        }
+        return results;
+    };
+
+    // Dashboard'a veya Dosya Takibi'ne sınıflandırma butonu ekle
+    setTimeout(() => {
+        const caseFilesPage = document.getElementById('page-case-files');
+        if (!caseFilesPage) return;
+
+        const existingZone = caseFilesPage.querySelector('.file-classify-zone');
+        if (existingZone) return;
+
+        const zone = document.createElement('div');
+        zone.className = 'file-classify-zone';
+        zone.style.cssText = 'margin-bottom:16px;padding:20px;border:2px dashed var(--border-color);border-radius:10px;text-align:center;cursor:pointer;transition:all 0.2s;';
+        zone.innerHTML = `
+            <i class="fas fa-magic" style="font-size:1.5rem;color:var(--primary);"></i>
+            <p style="margin:8px 0 4px;font-weight:600;">Dosya Otomatik Sınıflandırma</p>
+            <p style="font-size:0.78rem;color:var(--text-secondary);">Dosyaları sürükleyin veya tıklayıp seçin — otomatik kategorize edilir</p>
+            <input type="file" id="classifyFileInput" multiple style="display:none;" onchange="handleFileClassification(this.files)">
+        `;
+        zone.onclick = () => document.getElementById('classifyFileInput')?.click();
+        zone.ondragover = (e) => { e.preventDefault(); zone.style.borderColor = 'var(--primary)'; zone.style.background = 'rgba(74,108,247,0.05)'; };
+        zone.ondragleave = () => { zone.style.borderColor = 'var(--border-color)'; zone.style.background = ''; };
+        zone.ondrop = (e) => { e.preventDefault(); zone.style.borderColor = 'var(--border-color)'; zone.style.background = ''; handleFileClassification(e.dataTransfer.files); };
+
+        const firstChild = caseFilesPage.firstChild;
+        caseFilesPage.insertBefore(zone, firstChild?.nextSibling || firstChild);
+    }, 1500);
+
+    window.handleFileClassification = function(fileList) {
+        const files = Array.from(fileList);
+        if (!files.length) return;
+        const results = classifyUploadedFiles(files);
+
+        const existing = document.getElementById('classifyResultModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'classifyResultModal';
+        modal.className = 'modal active';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10002;';
+
+        const catCounts = {};
+        results.forEach(r => { catCounts[r.label] = (catCounts[r.label] || 0) + 1; });
+
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:600px;max-height:80vh;overflow-y:auto;background:var(--bg-primary);border-radius:12px;padding:24px;">
+                <h3 style="margin-bottom:16px;"><i class="fas fa-magic" style="color:var(--primary);margin-right:8px;"></i>Sınıflandırma Sonucu (${results.length} dosya)</h3>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+                    ${Object.entries(catCounts).map(([cat, count]) => `<span style="padding:3px 8px;background:var(--primary)22;color:var(--primary);border-radius:12px;font-size:0.75rem;">${cat}: ${count}</span>`).join('')}
+                </div>
+                ${results.map(r => `<div style="padding:8px;background:var(--bg-secondary);border-radius:6px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-size:0.85rem;font-weight:500;">${r.name}</div>
+                        <div style="font-size:0.72rem;color:var(--text-secondary);">
+                            <i class="fas ${CATEGORIES[r.category]?.icon || 'fa-file'}"></i> ${r.label}
+                            ${r.client ? `| <i class="fas fa-user"></i> ${r.client}` : ''}
+                            | ${(r.size / 1024).toFixed(1)} KB
+                        </div>
+                    </div>
+                    <span style="font-size:0.7rem;color:var(--text-secondary);">Skor: ${r.score}</span>
+                </div>`).join('')}
+                <button class="btn btn-outline" onclick="this.closest('#classifyResultModal').remove()" style="margin-top:12px;width:100%;">Kapat</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    };
+})();
+
+// ============================================================
+// #8 — E-POSTA RAPORLAMA (HTML rapor oluştur & indir)
+// ============================================================
+(function() {
+    window.generateEmailReport = function(type) {
+        const now = new Date();
+        const user = localStorage.getItem('currentUser') || 'Avukat';
+
+        const hearings = (DB.data.hearings || []).filter(h => {
+            const d = new Date(h.date);
+            if (type === 'sabah') return d.toDateString() === now.toDateString();
+            if (type === 'aksam') { const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1); return d.toDateString() === tomorrow.toDateString(); }
+            if (type === 'haftalik') { const week = new Date(now); week.setDate(week.getDate() + 7); return d >= now && d <= week; }
+            return false;
+        });
+
+        const tasks = (DB.data.tasks || []).filter(t => {
+            if (type === 'haftalik') return t.status !== 'done';
+            const d = new Date(t.dueDate);
+            return t.status !== 'done' && d <= new Date(now.getTime() + 86400000);
+        });
+
+        const deadlines = (DB.data.deadlines || []).filter(d => {
+            const dd = new Date(d.date);
+            const days = type === 'haftalik' ? 7 : 3;
+            return dd >= now && dd <= new Date(now.getTime() + days * 86400000);
+        });
+
+        const regs = (DB.data.regulations || []).filter(r => !r.read && (type === 'haftalik' || new Date(r.addedAt) >= new Date(now.getTime() - 86400000)));
+
+        const typeLabels = { sabah: 'Sabah Raporu', aksam: 'Akşam Raporu', haftalik: 'Haftalık Özet' };
+
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+            body{font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;}
+            h1{color:#4a6cf7;font-size:1.3rem;border-bottom:2px solid #4a6cf7;padding-bottom:8px;}
+            h2{font-size:1rem;color:#555;margin-top:20px;}
+            .card{padding:10px;background:#f8f9fa;border-radius:6px;margin-bottom:8px;border-left:3px solid #4a6cf7;}
+            .critical{border-left-color:#e74c3c;}
+            .warning{border-left-color:#f39c12;}
+            .success{border-left-color:#2ecc71;}
+            .meta{font-size:0.78rem;color:#888;}
+            .badge{display:inline-block;padding:2px 6px;border-radius:10px;font-size:0.7rem;color:#fff;margin-left:4px;}
+        </style></head><body>
+            <h1>⚖️ Akgül Legal — ${typeLabels[type]}</h1>
+            <p class="meta">${now.toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} | ${user}</p>
+
+            <h2>📅 Duruşmalar (${hearings.length})</h2>
+            ${hearings.length ? hearings.map(h => `<div class="card"><strong>${h.subject || h.client}</strong><br><span class="meta">${new Date(h.date).toLocaleDateString('tr-TR')} ${h.time || ''} | ${h.court || ''}</span></div>`).join('') : '<p class="meta">Duruşma yok</p>'}
+
+            <h2>📋 Görevler (${tasks.length})</h2>
+            ${tasks.length ? tasks.map(t => `<div class="card ${new Date(t.dueDate) < now ? 'critical' : ''}">${t.title}<br><span class="meta">${t.dueDate ? new Date(t.dueDate).toLocaleDateString('tr-TR') : 'Tarih yok'} | ${t.assignee || ''}</span></div>`).join('') : '<p class="meta">Bekleyen görev yok</p>'}
+
+            <h2>⏰ Yaklaşan Süreler (${deadlines.length})</h2>
+            ${deadlines.length ? deadlines.map(d => `<div class="card warning">${d.description || d.type}<br><span class="meta">${new Date(d.date).toLocaleDateString('tr-TR')}</span></div>`).join('') : '<p class="meta">Yaklaşan süre yok</p>'}
+
+            ${regs.length ? `<h2>📰 Yeni Mevzuat (${regs.length})</h2>${regs.map(r => `<div class="card">${r.title}<br><span class="meta">${r.source} | ${r.severity}</span></div>`).join('')}` : ''}
+
+            <hr style="margin-top:24px;"><p class="meta" style="text-align:center;">Bu rapor Akgül Legal Büro Yönetim Sistemi tarafından oluşturulmuştur.</p>
+        </body></html>`;
+
+        // Download
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `akgul-legal-rapor-${type}-${now.toISOString().split('T')[0]}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast(`${typeLabels[type]} indirildi`, 'success');
     };
 })();
