@@ -1452,20 +1452,42 @@ function showContractEditor(contractId) {
     modal.className = 'modal active';
     modal.id = 'contractEditorModal';
     modal.innerHTML = `
-    <div class="modal-content" style="max-width:800px;max-height:90vh;">
+    <div class="modal-content" style="max-width:900px;max-height:92vh;">
         <div class="modal-header">
             <h3>Sözleşme Düzenle - ${c.no}</h3>
             <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
         </div>
         <div class="modal-body">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:10px;background:var(--bg-secondary);border-radius:8px;border-left:3px solid var(--primary);">
+                <span style="font-size:0.78rem;color:var(--text-secondary);margin-right:4px;line-height:28px;"><i class="fas fa-bolt"></i> Gelişmiş Analiz:</span>
+                <button class="btn btn-sm btn-outline" onclick="openContractCompare('${c.id}')" title="Başka bir sözleşmeyle diff karşılaştır">
+                    <i class="fas fa-exchange-alt"></i> Karşılaştır
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="openClauseOptimizer('${c.id}')" title="Seçili maddeyi AI ile güçlendir">
+                    <i class="fas fa-magic"></i> Madde Optimize
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="computeContractHealth('${c.id}')" title="Sağlık puanı hesapla">
+                    <i class="fas fa-heartbeat"></i> Sağlık Puanı
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="predictRenewal('${c.id}')" title="AI ile yenileme olasılığı tahmini">
+                    <i class="fas fa-sync-alt"></i> Yenileme Tahmini
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="openDependencyMap('${c.id}')" title="Maddeler arası bağımlılıklar">
+                    <i class="fas fa-project-diagram"></i> Bağımlılık
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="openContractNotes('${c.id}')" title="Ekip yorumları ve notlar">
+                    <i class="fas fa-comments"></i> Notlar <span id="contractNotesBadge-${c.id}" style="display:none;background:var(--primary);color:white;padding:1px 5px;border-radius:8px;font-size:0.7rem;"></span>
+                </button>
+            </div>
             <div class="form-group">
                 <label>Özel Notlar / Ek Maddeler</label>
                 <textarea id="contractCustomNotes" rows="4" placeholder="Sözleşmeye eklemek istediğiniz özel maddeler...">${c.customNotes || ''}</textarea>
             </div>
             <div class="form-group">
                 <label>Sözleşme Metni</label>
-                <textarea id="contractContent" rows="25" style="font-family:monospace;font-size:0.85rem;">${c.content}</textarea>
+                <textarea id="contractContent" rows="22" style="font-family:monospace;font-size:0.85rem;">${c.content}</textarea>
             </div>
+            <div id="contractAnalysisPanel" style="display:none;margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:8px;"></div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-ghost" onclick="this.closest('.modal').remove()">İptal</button>
@@ -1475,6 +1497,8 @@ function showContractEditor(contractId) {
         </div>
     </div>`;
     document.body.appendChild(modal);
+    // Update notes badge if module loaded
+    if (typeof updateContractNotesBadge === 'function') updateContractNotesBadge(c.id);
 }
 
 window.saveContractEdit = function(id) {

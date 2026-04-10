@@ -7072,8 +7072,14 @@ JSON formatında yanıt ver:
                         <span style="color:var(--text-secondary);">${new Date(v.date).toLocaleDateString('tr-TR')}</span>
                     </div>`).join('')}
                 </div>` : ''}
+                ${op.assignedTo ? `<div style="padding:10px;background:rgba(52,152,219,0.08);border-left:3px solid #3498db;border-radius:6px;margin-bottom:12px;font-size:0.82rem;">
+                    <strong><i class="fas fa-user-shield"></i> Delegasyon:</strong> ${op.assignedTo}
+                    ${op.assignmentDueDate ? ` | Teslim: ${new Date(op.assignmentDueDate).toLocaleDateString('tr-TR')}` : ''}
+                    ${op.delegationStatus ? ` | Durum: <strong>${op.delegationStatus}</strong>` : ''}
+                </div>` : ''}
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <button class="btn btn-outline" onclick="this.closest('#opinionViewModal').remove();openOpinionEditor('${op.id}')"><i class="fas fa-edit"></i> Düzenle</button>
+                    <button class="btn btn-outline" style="color:#3498db;" onclick="this.closest('#opinionViewModal').remove();openOpinionDelegation('${op.id}')"><i class="fas fa-user-shield"></i> ${op.assignedTo ? 'Delegasyonu Yönet' : 'Ata / Delege Et'}</button>
                     ${op.status === 'onay_bekliyor' ? `<button class="btn btn-primary" onclick="approveOpinion('${op.id}', true)"><i class="fas fa-check"></i> Onayla</button><button class="btn btn-outline" style="color:var(--accent1);" onclick="approveOpinion('${op.id}', false)"><i class="fas fa-times"></i> Reddet</button>` : ''}
                     ${op.status === 'onaylandi' ? `<button class="btn btn-outline" onclick="archiveOpinion('${op.id}')"><i class="fas fa-archive"></i> Arşivle</button>` : ''}
                     <button class="btn btn-outline" onclick="generateOpinionAISummary('${op.id}')"><i class="fas fa-robot"></i> AI Özet</button>
@@ -7639,5 +7645,1808 @@ En fazla 5 sonuç ver. Gerçekçi ve güncel bilgiler olsun.` }] }], generationC
         a.click();
         URL.revokeObjectURL(url);
         toast(`${typeLabels[type]} indirildi`, 'success');
+    };
+})();
+
+// ============================================================
+// FAZ 1 — GELİŞMİŞ SÖZLEŞME ANALİZİ (contract-shield'den)
+// ============================================================
+(function() {
+    // Helper: inject result into contract analysis panel
+    function showPanel(html) {
+        const el = document.getElementById('contractAnalysisPanel');
+        if (!el) return;
+        el.style.display = 'block';
+        el.innerHTML = html;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function getContract(id) {
+        return (DB.data.contracts || []).find(c => c.id === id);
+    }
+
+    // ---------- 1. CONTRACT COMPARISON (DIFF) ----------
+    function lcsLines(a, b) {
+        const m = a.length, n = b.length;
+        const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+        for (let i = 1; i <= m; i++) {
+            for (let j = 1; j <= n; j++) {
+                dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+            }
+        }
+        const result = [];
+        let i = m, j = n;
+        while (i > 0 && j > 0) {
+            if (a[i-1] === b[j-1]) { result.unshift({ type: 'unchanged', text: a[i-1], lineA: i, lineB: j }); i--; j--; }
+            else if (dp[i-1][j] >= dp[i][j-1]) { result.unshift({ type: 'removed', text: a[i-1], lineA: i }); i--; }
+            else { result.unshift({ type: 'added', text: b[j-1], lineB: j }); j--; }
+        }
+        while (i > 0) { result.unshift({ type: 'removed', text: a[i-1], lineA: i }); i--; }
+        while (j > 0) { result.unshift({ type: 'added', text: b[j-1], lineB: j }); j--; }
+        return result;
+    }
+
+    window.openContractCompare = function(contractId) {
+        const c = getContract(contractId);
+        if (!c) return;
+        const others = (DB.data.contracts || []).filter(x => x.id !== contractId);
+
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.id = 'contractCompareModal';
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width:1100px;max-height:92vh;">
+            <div class="modal-header">
+                <h3><i class="fas fa-exchange-alt"></i> Sözleşme Karşılaştırma — ${c.no}</h3>
+                <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Karşılaştırılacak Sözleşme</label>
+                    <select id="compareTargetSelect">
+                        <option value="">-- Başka bir sözleşme seçin --</option>
+                        ${others.map(o => `<option value="${o.id}">${o.no} - ${o.title}</option>`).join('')}
+                        <option value="__paste__">📋 Metin yapıştır (dışarıdan gelen sözleşme)</option>
+                    </select>
+                </div>
+                <div id="compareTextArea" style="display:none;">
+                    <label>Karşılaştırılacak metin</label>
+                    <textarea id="compareTargetText" rows="6" placeholder="Karşı tarafın önerdiği metni yapıştırın..."></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="runContractCompare('${c.id}')"><i class="fas fa-play"></i> Karşılaştır</button>
+                <div id="compareResult" style="margin-top:14px;"></div>
+            </div>
+        </div>`;
+        document.body.appendChild(modal);
+        document.getElementById('compareTargetSelect').addEventListener('change', function() {
+            document.getElementById('compareTextArea').style.display = this.value === '__paste__' ? 'block' : 'none';
+        });
+    };
+
+    window.runContractCompare = function(contractId) {
+        const c = getContract(contractId);
+        if (!c) return;
+        const sel = document.getElementById('compareTargetSelect').value;
+        let targetText;
+        if (sel === '__paste__') {
+            targetText = document.getElementById('compareTargetText').value;
+            if (!targetText.trim()) { toast('Lütfen karşılaştırılacak metni girin', 'warning'); return; }
+        } else if (sel) {
+            const target = getContract(sel);
+            if (!target) return;
+            targetText = target.content || '';
+        } else {
+            toast('Karşılaştırılacak sözleşmeyi seçin', 'warning'); return;
+        }
+
+        const aLines = (c.content || '').split('\n').map(l => l.trim()).filter(l => l);
+        const bLines = targetText.split('\n').map(l => l.trim()).filter(l => l);
+        const diff = lcsLines(aLines, bLines);
+
+        const added = diff.filter(d => d.type === 'added').length;
+        const removed = diff.filter(d => d.type === 'removed').length;
+        const unchanged = diff.filter(d => d.type === 'unchanged').length;
+
+        const html = `
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
+                <div style="padding:10px;background:rgba(46,204,113,0.1);border-radius:6px;text-align:center;">
+                    <div style="font-size:1.4rem;font-weight:700;color:#2ecc71;">+${added}</div>
+                    <div style="font-size:0.72rem;">Eklenen</div>
+                </div>
+                <div style="padding:10px;background:rgba(231,76,60,0.1);border-radius:6px;text-align:center;">
+                    <div style="font-size:1.4rem;font-weight:700;color:#e74c3c;">-${removed}</div>
+                    <div style="font-size:0.72rem;">Kaldırılan</div>
+                </div>
+                <div style="padding:10px;background:var(--bg-tertiary);border-radius:6px;text-align:center;">
+                    <div style="font-size:1.4rem;font-weight:700;">${unchanged}</div>
+                    <div style="font-size:0.72rem;">Değişmedi</div>
+                </div>
+            </div>
+            <div style="max-height:420px;overflow-y:auto;font-family:monospace;font-size:0.82rem;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--bg-primary);">
+                ${diff.map(d => {
+                    if (d.type === 'added') return `<div style="background:rgba(46,204,113,0.15);padding:2px 6px;border-left:3px solid #2ecc71;">+ ${escapeHtml(d.text)}</div>`;
+                    if (d.type === 'removed') return `<div style="background:rgba(231,76,60,0.15);padding:2px 6px;border-left:3px solid #e74c3c;">- ${escapeHtml(d.text)}</div>`;
+                    return `<div style="padding:2px 6px;color:var(--text-secondary);">&nbsp;&nbsp;${escapeHtml(d.text)}</div>`;
+                }).join('')}
+            </div>`;
+        document.getElementById('compareResult').innerHTML = html;
+    };
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+
+    // ---------- 2. CLAUSE OPTIMIZER ----------
+    window.openClauseOptimizer = function(contractId) {
+        const c = getContract(contractId);
+        if (!c) return;
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.id = 'clauseOptimizerModal';
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width:800px;max-height:92vh;">
+            <div class="modal-header">
+                <h3><i class="fas fa-magic"></i> Madde Optimizasyonu</h3>
+                <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Optimize edilecek madde metni</label>
+                    <textarea id="clauseOptInput" rows="6" placeholder="Sözleşmeden bir maddeyi buraya yapıştırın..."></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Optimizasyon Hedefi</label>
+                        <select id="clauseOptGoal">
+                            <option value="risk_reduction">Risk Azaltma</option>
+                            <option value="clarity">Netlik</option>
+                            <option value="balance">Taraf Dengesi</option>
+                            <option value="compliance">Mevzuat Uyumu</option>
+                            <option value="enforceability">İcra Edilebilirlik</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Madde Türü</label>
+                        <input type="text" id="clauseOptType" placeholder="Örn: Cezai şart, Fesih, Gizlilik">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="runClauseOptimization()"><i class="fas fa-bolt"></i> AI ile Optimize Et</button>
+                <div id="clauseOptResult" style="margin-top:14px;"></div>
+            </div>
+        </div>`;
+        document.body.appendChild(modal);
+    };
+
+    window.runClauseOptimization = async function() {
+        const text = document.getElementById('clauseOptInput').value.trim();
+        const goal = document.getElementById('clauseOptGoal').value;
+        const type = document.getElementById('clauseOptType').value || 'Genel';
+        if (!text) { toast('Madde metnini girin', 'warning'); return; }
+
+        const result = document.getElementById('clauseOptResult');
+        result.innerHTML = '<div style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin"></i> AI analiz ediyor...</div>';
+
+        const goalLabels = {
+            risk_reduction: 'Risk Azaltma',
+            clarity: 'Netlik',
+            balance: 'Taraf Dengesi',
+            compliance: 'Mevzuat Uyumu',
+            enforceability: 'İcra Edilebilirlik'
+        };
+
+        const prompt = `Sen Türkiye'nin en deneyimli sözleşme hukuku uzmanısın. Aşağıdaki sözleşme maddesini belirtilen hedefe göre optimize et.
+
+MEVCUT MADDE METNİ:
+${text}
+
+MADDE TÜRÜ: ${type}
+OPTİMİZASYON HEDEFİ: ${goalLabels[goal]}
+
+Maddeyi analiz et, zayıf noktaları tespit et ve güçlendirilmiş versiyonunu hazırla. Sadece aşağıdaki JSON formatında yanıt ver:
+{
+  "strengthened_text": "güçlendirilmiş madde metni",
+  "changes_summary": "yapılan değişikliklerin özeti",
+  "risk_reduction": "low|medium|high|critical",
+  "legal_basis": ["6098 sayılı TBK m.XX", "..."],
+  "warnings": ["dikkat edilmesi gereken konular"],
+  "weaknesses": ["mevcut zayıf noktalar"]
+}`;
+
+        try {
+            const aiResponse = await callGeminiAPI(prompt);
+            const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error('JSON yanıt alınamadı');
+            const data = JSON.parse(jsonMatch[0]);
+
+            const colors = { low: '#2ecc71', medium: '#f39c12', high: '#e67e22', critical: '#e74c3c' };
+            const labels = { low: 'Düşük', medium: 'Orta', high: 'Yüksek', critical: 'Kritik' };
+
+            result.innerHTML = `
+                <div style="padding:12px;background:rgba(74,108,247,0.08);border-left:3px solid var(--primary);border-radius:6px;margin-bottom:10px;">
+                    <h4 style="margin:0 0 6px;"><i class="fas fa-check-circle" style="color:var(--primary);"></i> Güçlendirilmiş Metin</h4>
+                    <div style="white-space:pre-wrap;font-size:0.88rem;">${escapeHtml(data.strengthened_text)}</div>
+                    <button class="btn btn-sm btn-outline" style="margin-top:8px;" onclick="navigator.clipboard.writeText(${JSON.stringify(data.strengthened_text)});toast('Kopyalandı','success')"><i class="fas fa-copy"></i> Kopyala</button>
+                </div>
+                <div style="padding:10px;background:var(--bg-tertiary);border-radius:6px;margin-bottom:8px;">
+                    <strong>Yapılan Değişiklikler:</strong> ${escapeHtml(data.changes_summary)}
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:8px;">
+                    <span style="padding:4px 10px;background:${colors[data.risk_reduction]};color:white;border-radius:12px;font-size:0.78rem;">Risk ${labels[data.risk_reduction] || data.risk_reduction}</span>
+                </div>
+                ${data.weaknesses?.length ? `<div style="margin-bottom:8px;"><strong>Zayıf Noktalar:</strong><ul>${data.weaknesses.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>` : ''}
+                ${data.legal_basis?.length ? `<div style="margin-bottom:8px;"><strong>Yasal Dayanak:</strong><ul>${data.legal_basis.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul></div>` : ''}
+                ${data.warnings?.length ? `<div style="padding:8px;background:rgba(243,156,18,0.1);border-left:3px solid #f39c12;border-radius:4px;"><strong>⚠️ Uyarılar:</strong><ul>${data.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>` : ''}
+            `;
+        } catch (e) {
+            result.innerHTML = `<div style="padding:10px;background:rgba(231,76,60,0.1);border-left:3px solid #e74c3c;border-radius:6px;">Hata: ${escapeHtml(e.message)}</div>`;
+        }
+    };
+
+    // ---------- 3. CONTRACT HEALTH SCORE ----------
+    const HEALTH_WEIGHTS = { legal: 0.35, financial: 0.25, operational: 0.20, reputation: 0.20 };
+    const HEALTH_KEYWORDS = {
+        legal: ['kanun', 'yönetmelik', 'TBK', 'TTK', 'KVKK', 'mevzuat', 'yasal', 'hukuki'],
+        financial: ['ödeme', 'fatura', 'ücret', 'bedel', 'faiz', 'cezai şart', 'teminat', 'tazminat'],
+        operational: ['süre', 'teslim', 'ifa', 'performans', 'hizmet', 'yükümlülük', 'gecikme'],
+        reputation: ['gizlilik', 'iyi niyet', 'itibar', 'marka', 'kamuya açıklama', 'rekabet']
+    };
+
+    window.computeContractHealth = function(contractId) {
+        const c = getContract(contractId);
+        if (!c) return;
+        const text = (c.content || '').toLowerCase();
+        const lines = text.split('\n').filter(l => l.trim());
+
+        // Category analysis: count presence + missing critical terms
+        const categories = {};
+        let totalScore = 0;
+
+        Object.entries(HEALTH_KEYWORDS).forEach(([cat, keywords]) => {
+            const found = keywords.filter(k => text.includes(k.toLowerCase())).length;
+            const coverage = Math.min(100, (found / keywords.length) * 100);
+
+            // Risk: missing keywords = higher risk
+            const riskPoints = Math.max(0, 100 - coverage);
+            const weighted = riskPoints * HEALTH_WEIGHTS[cat];
+            totalScore += weighted;
+
+            categories[cat] = {
+                coverage: Math.round(coverage),
+                risk: Math.round(riskPoints),
+                found,
+                total: keywords.length,
+                missing: keywords.filter(k => !text.includes(k.toLowerCase()))
+            };
+        });
+
+        // Completeness: key clauses presence
+        const criticalClauses = [
+            { name: 'Taraflar', keywords: ['taraf', 'müvekkil', 'vekil'] },
+            { name: 'Konu', keywords: ['konu', 'amaç', 'kapsam'] },
+            { name: 'Ücret', keywords: ['ücret', 'bedel', 'ödeme'] },
+            { name: 'Süre', keywords: ['süre', 'vade', 'tarih'] },
+            { name: 'Fesih', keywords: ['fesih', 'sona erme', 'iptal'] },
+            { name: 'Yetkili Mahkeme', keywords: ['yetkili mahkeme', 'uyuşmazlık', 'tahkim'] },
+            { name: 'Gizlilik', keywords: ['gizlilik', 'sır', 'ifşa'] },
+            { name: 'İmza', keywords: ['imza', 'tarih'] }
+        ];
+        const presentClauses = criticalClauses.filter(cl => cl.keywords.some(k => text.includes(k)));
+        const completeness = Math.round((presentClauses.length / criticalClauses.length) * 100);
+        const missingClauses = criticalClauses.filter(cl => !cl.keywords.some(k => text.includes(k)));
+
+        // Final health score: invert risk + weight completeness
+        const riskScore = Math.round(totalScore);
+        const healthScore = Math.round((100 - riskScore) * 0.6 + completeness * 0.4);
+
+        const level = healthScore >= 80 ? { label: 'Mükemmel', color: '#2ecc71', icon: '💚' } :
+                      healthScore >= 60 ? { label: 'İyi', color: '#27ae60', icon: '✅' } :
+                      healthScore >= 40 ? { label: 'Orta', color: '#f39c12', icon: '⚠️' } :
+                      healthScore >= 20 ? { label: 'Zayıf', color: '#e67e22', icon: '🔴' } :
+                                          { label: 'Kritik', color: '#e74c3c', icon: '🚨' };
+
+        // Save to contract
+        c.healthScore = healthScore;
+        c.healthCategories = categories;
+        c.healthCompleteness = completeness;
+        c.healthComputedAt = new Date().toISOString();
+        DB.save();
+
+        const catLabels = { legal: 'Yasal Uyum', financial: 'Finansal', operational: 'Operasyonel', reputation: 'İtibar' };
+
+        showPanel(`
+            <h4 style="margin-top:0;"><i class="fas fa-heartbeat"></i> Sözleşme Sağlık Puanı</h4>
+            <div style="display:flex;align-items:center;gap:20px;margin-bottom:14px;">
+                <div style="width:120px;height:120px;border-radius:50%;background:conic-gradient(${level.color} ${healthScore*3.6}deg, var(--bg-tertiary) 0deg);display:flex;align-items:center;justify-content:center;">
+                    <div style="width:90px;height:90px;border-radius:50%;background:var(--bg-secondary);display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                        <div style="font-size:1.8rem;font-weight:700;color:${level.color};">${healthScore}</div>
+                        <div style="font-size:0.72rem;">/ 100</div>
+                    </div>
+                </div>
+                <div style="flex:1;">
+                    <div style="font-size:1.2rem;font-weight:700;color:${level.color};">${level.icon} ${level.label}</div>
+                    <div style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;">Tamamlanma: ${completeness}% (${presentClauses.length}/${criticalClauses.length} kritik madde)</div>
+                    <div style="font-size:0.82rem;color:var(--text-secondary);">Risk Skoru: ${riskScore}/100</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;">
+                ${Object.entries(categories).map(([k, v]) => `
+                    <div style="padding:10px;background:var(--bg-primary);border-radius:6px;border-left:3px solid ${v.risk > 50 ? '#e74c3c' : v.risk > 25 ? '#f39c12' : '#2ecc71'};">
+                        <div style="font-weight:600;font-size:0.85rem;">${catLabels[k]}</div>
+                        <div style="font-size:0.78rem;color:var(--text-secondary);">Kapsam: ${v.coverage}% (${v.found}/${v.total})</div>
+                        ${v.missing.length ? `<div style="font-size:0.72rem;color:#e74c3c;margin-top:4px;">Eksik: ${v.missing.slice(0,3).join(', ')}${v.missing.length > 3 ? '...' : ''}</div>` : ''}
+                    </div>`).join('')}
+            </div>
+            ${missingClauses.length ? `
+                <div style="padding:10px;background:rgba(231,76,60,0.08);border-left:3px solid #e74c3c;border-radius:6px;">
+                    <strong>⚠️ Eksik Kritik Maddeler:</strong>
+                    <div style="margin-top:4px;">${missingClauses.map(c => `<span style="display:inline-block;padding:3px 8px;margin:2px;background:rgba(231,76,60,0.15);border-radius:10px;font-size:0.78rem;">${c.name}</span>`).join('')}</div>
+                </div>` : '<div style="padding:10px;background:rgba(46,204,113,0.08);border-left:3px solid #2ecc71;border-radius:6px;">✅ Tüm kritik maddeler mevcut</div>'}
+        `);
+        toast(`Sağlık puanı: ${healthScore}/100 (${level.label})`, healthScore >= 60 ? 'success' : 'warning');
+    };
+
+    // ---------- 4. RENEWAL PREDICTION ----------
+    window.predictRenewal = async function(contractId) {
+        const c = getContract(contractId);
+        if (!c) return;
+
+        showPanel('<div style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin"></i> AI yenileme tahmini yapılıyor...</div>');
+
+        const prompt = `Sen Türk hukuk ve ticaret alanında uzmanlaşmış bir sözleşme yenileme tahmin uzmanısın. Aşağıdaki sözleşme için yenileme olasılığını tahmin et.
+
+SÖZLEŞME BİLGİLERİ:
+- Başlık: ${c.title}
+- No: ${c.no}
+- Müvekkil: ${c.clientName}
+- Tarih: ${c.date}
+- Ücret: ${c.fees || 'N/A'} ${c.currency || ''}
+- Ödeme Koşulları: ${c.paymentTerms || 'N/A'}
+- Sağlık Puanı: ${c.healthScore || 'Hesaplanmadı'}/100
+
+SÖZLEŞME METNİ (İLK 2000 KARAKTER):
+${(c.content || '').substring(0, 2000)}
+
+Lütfen aşağıdaki JSON formatında yenileme tahmini döndür. Türkçe açıklamalar:
+{
+  "renewal_probability": 0-100,
+  "confidence_level": "high|medium|low",
+  "factors_favoring_renewal": [{"factor":"","weight":1-10,"explanation":""}],
+  "factors_against_renewal": [{"factor":"","weight":1-10,"explanation":""}],
+  "recommended_actions": [{"action":"","priority":"critical|high|medium|low","deadline":""}],
+  "suggested_improvements": ["..."],
+  "estimated_negotiation_difficulty": 1-10,
+  "price_change_prediction": {"direction":"up|down|stable","percentage_range":"","justification":""}
+}
+
+En az 3 lehte, 3 aleyhte faktör ve 4 aksiyon döndür.`;
+
+        try {
+            const response = await callGeminiAPI(prompt);
+            const jsonMatch = response.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error('JSON yanıt alınamadı');
+            const data = JSON.parse(jsonMatch[0]);
+
+            const prob = data.renewal_probability || 0;
+            const color = prob >= 70 ? '#2ecc71' : prob >= 40 ? '#f39c12' : '#e74c3c';
+            const priorityColors = { critical: '#e74c3c', high: '#e67e22', medium: '#f39c12', low: '#95a5a6' };
+            const dirIcons = { up: '📈', down: '📉', stable: '➡️' };
+
+            showPanel(`
+                <h4 style="margin-top:0;"><i class="fas fa-sync-alt"></i> Yenileme Tahmini</h4>
+                <div style="display:flex;align-items:center;gap:20px;margin-bottom:14px;">
+                    <div style="width:140px;height:140px;border-radius:50%;background:conic-gradient(${color} ${prob*3.6}deg, var(--bg-tertiary) 0deg);display:flex;align-items:center;justify-content:center;">
+                        <div style="width:110px;height:110px;border-radius:50%;background:var(--bg-secondary);display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                            <div style="font-size:2rem;font-weight:700;color:${color};">${prob}%</div>
+                            <div style="font-size:0.72rem;">Yenileme</div>
+                        </div>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-size:0.85rem;margin-bottom:4px;">Güven: <strong>${data.confidence_level || 'medium'}</strong></div>
+                        <div style="font-size:0.85rem;margin-bottom:4px;">Müzakere Zorluğu: <strong>${data.estimated_negotiation_difficulty || 5}/10</strong></div>
+                        ${data.price_change_prediction ? `<div style="font-size:0.85rem;">${dirIcons[data.price_change_prediction.direction]} Fiyat: ${data.price_change_prediction.percentage_range || ''}</div><div style="font-size:0.75rem;color:var(--text-secondary);">${escapeHtml(data.price_change_prediction.justification || '')}</div>` : ''}
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+                    <div>
+                        <h5 style="color:#2ecc71;margin:0 0 6px;">✅ Lehte Faktörler</h5>
+                        ${(data.factors_favoring_renewal || []).map(f => `<div style="padding:6px 8px;background:rgba(46,204,113,0.08);border-left:3px solid #2ecc71;border-radius:4px;margin-bottom:4px;font-size:0.82rem;"><strong>${escapeHtml(f.factor)}</strong> <span style="color:var(--text-secondary);">(${f.weight}/10)</span><br>${escapeHtml(f.explanation || '')}</div>`).join('')}
+                    </div>
+                    <div>
+                        <h5 style="color:#e74c3c;margin:0 0 6px;">❌ Aleyhte Faktörler</h5>
+                        ${(data.factors_against_renewal || []).map(f => `<div style="padding:6px 8px;background:rgba(231,76,60,0.08);border-left:3px solid #e74c3c;border-radius:4px;margin-bottom:4px;font-size:0.82rem;"><strong>${escapeHtml(f.factor)}</strong> <span style="color:var(--text-secondary);">(${f.weight}/10)</span><br>${escapeHtml(f.explanation || '')}</div>`).join('')}
+                    </div>
+                </div>
+                <div style="margin-bottom:10px;">
+                    <h5 style="margin:0 0 6px;">🎯 Önerilen Aksiyonlar</h5>
+                    ${(data.recommended_actions || []).map(a => `<div style="padding:8px;background:var(--bg-primary);border-left:3px solid ${priorityColors[a.priority] || '#95a5a6'};border-radius:4px;margin-bottom:4px;font-size:0.82rem;"><strong>${escapeHtml(a.action)}</strong> <span style="padding:2px 6px;background:${priorityColors[a.priority] || '#95a5a6'};color:white;border-radius:8px;font-size:0.7rem;">${a.priority || 'medium'}</span>${a.deadline ? `<div style="color:var(--text-secondary);font-size:0.75rem;">📅 ${escapeHtml(a.deadline)}</div>` : ''}</div>`).join('')}
+                </div>
+                ${data.suggested_improvements?.length ? `<div><h5 style="margin:0 0 6px;">💡 İyileştirme Önerileri</h5><ul style="margin:0;padding-left:20px;font-size:0.82rem;">${data.suggested_improvements.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul></div>` : ''}
+            `);
+        } catch (e) {
+            showPanel(`<div style="padding:10px;background:rgba(231,76,60,0.1);border-left:3px solid #e74c3c;border-radius:6px;">Hata: ${escapeHtml(e.message)}</div>`);
+        }
+    };
+
+    // ---------- 5. DEPENDENCY MAP ----------
+    window.openDependencyMap = async function(contractId) {
+        const c = getContract(contractId);
+        if (!c) return;
+
+        // Extract MADDE-based clauses
+        const text = c.content || '';
+        const matches = text.split(/(?=MADDE\s+\d+|Madde\s+\d+)/).filter(s => s.trim().length > 20);
+        if (matches.length < 2) {
+            showPanel('<div style="padding:10px;background:rgba(243,156,18,0.1);border-left:3px solid #f39c12;border-radius:6px;">Sözleşmede en az 2 MADDE bulunamadı. Madde yapılı bir metin gerekli.</div>');
+            return;
+        }
+
+        const clauses = matches.slice(0, 20).map((m, i) => {
+            const titleMatch = m.match(/MADDE\s+\d+[\s\-:]*([^\n]{0,80})/i);
+            return {
+                key: `m${i+1}`,
+                title: titleMatch?.[1]?.trim() || `Madde ${i+1}`,
+                text: m.substring(0, 500)
+            };
+        });
+
+        showPanel('<div style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin"></i> Bağımlılıklar analiz ediliyor...</div>');
+
+        const prompt = `Aşağıdaki sözleşme maddelerini analiz et ve maddeler arası bağımlılıkları tespit et. Her bağımlılık için: kaynak madde, hedef madde, bağımlılık türü (reference, conflict, dependent, complementary) ve açıklama belirt. Ayrıca birbirine yakın maddeleri kümelere (cluster) grupla.
+
+MADDELER:
+${clauses.map(c => `[${c.key}] ${c.title}: ${c.text.substring(0, 200)}`).join('\n\n')}
+
+Sadece aşağıdaki JSON formatında yanıt ver:
+{
+  "dependencies": [{"source_key":"m1","target_key":"m2","type":"reference|conflict|dependent|complementary","description":"..."}],
+  "clusters": [{"name":"Küme adı","clause_keys":["m1","m2"]}]
+}`;
+
+        try {
+            const response = await callGeminiAPI(prompt);
+            const jsonMatch = response.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error('JSON yanıt alınamadı');
+            const data = JSON.parse(jsonMatch[0]);
+
+            const typeColors = { reference: '#3498db', conflict: '#e74c3c', dependent: '#f39c12', complementary: '#2ecc71' };
+            const typeLabels = { reference: '🔗 Referans', conflict: '⚠️ Çelişki', dependent: '↳ Bağımlı', complementary: '➕ Tamamlayıcı' };
+
+            showPanel(`
+                <h4 style="margin-top:0;"><i class="fas fa-project-diagram"></i> Madde Bağımlılık Haritası</h4>
+                <div style="margin-bottom:12px;">
+                    <strong>Tespit Edilen Maddeler (${clauses.length})</strong>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+                        ${clauses.map(c => `<span style="padding:4px 8px;background:var(--bg-primary);border-radius:12px;font-size:0.75rem;border:1px solid var(--border);">[${c.key}] ${escapeHtml(c.title.substring(0,30))}</span>`).join('')}
+                    </div>
+                </div>
+                ${data.clusters?.length ? `
+                <div style="margin-bottom:12px;">
+                    <h5 style="margin:0 0 6px;">📦 Madde Kümeleri</h5>
+                    ${data.clusters.map(cl => `
+                        <div style="padding:8px;background:var(--bg-primary);border-radius:6px;margin-bottom:4px;">
+                            <strong>${escapeHtml(cl.name)}</strong>
+                            <div style="margin-top:4px;">${(cl.clause_keys || []).map(k => `<span style="padding:2px 6px;background:rgba(74,108,247,0.15);border-radius:8px;font-size:0.72rem;margin-right:4px;">${k}</span>`).join('')}</div>
+                        </div>`).join('')}
+                </div>` : ''}
+                ${data.dependencies?.length ? `
+                <div>
+                    <h5 style="margin:0 0 6px;">🔗 Bağımlılıklar (${data.dependencies.length})</h5>
+                    ${data.dependencies.map(d => `
+                        <div style="padding:8px;background:var(--bg-primary);border-left:3px solid ${typeColors[d.type] || '#95a5a6'};border-radius:4px;margin-bottom:4px;font-size:0.82rem;">
+                            <div><strong>${d.source_key}</strong> → <strong>${d.target_key}</strong> <span style="padding:2px 6px;background:${typeColors[d.type] || '#95a5a6'};color:white;border-radius:8px;font-size:0.7rem;margin-left:6px;">${typeLabels[d.type] || d.type}</span></div>
+                            <div style="color:var(--text-secondary);margin-top:2px;">${escapeHtml(d.description || '')}</div>
+                        </div>`).join('')}
+                </div>` : '<div style="padding:10px;background:var(--bg-primary);border-radius:6px;">Bağımlılık tespit edilmedi.</div>'}
+            `);
+        } catch (e) {
+            showPanel(`<div style="padding:10px;background:rgba(231,76,60,0.1);border-left:3px solid #e74c3c;border-radius:6px;">Hata: ${escapeHtml(e.message)}</div>`);
+        }
+    };
+
+    // ---------- 6. COLLABORATIVE NOTES ----------
+    function getContractNotes(contractId) {
+        if (!DB.data.contractNotes) DB.data.contractNotes = {};
+        if (!DB.data.contractNotes[contractId]) DB.data.contractNotes[contractId] = [];
+        return DB.data.contractNotes[contractId];
+    }
+
+    window.updateContractNotesBadge = function(contractId) {
+        const notes = getContractNotes(contractId);
+        const badge = document.getElementById(`contractNotesBadge-${contractId}`);
+        if (badge) {
+            if (notes.length) { badge.textContent = notes.length; badge.style.display = 'inline-block'; }
+            else badge.style.display = 'none';
+        }
+    };
+
+    window.openContractNotes = function(contractId) {
+        const c = getContract(contractId);
+        if (!c) return;
+        const notes = getContractNotes(contractId);
+        const currentUser = (DB.data.currentUser?.name) || localStorage.getItem('currentUser') || 'Anonim';
+
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.id = 'contractNotesModal';
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width:700px;max-height:92vh;">
+            <div class="modal-header">
+                <h3><i class="fas fa-comments"></i> Ekip Notları — ${c.no}</h3>
+                <button class="modal-close" onclick="this.closest('.modal').remove();updateContractNotesBadge('${contractId}')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="contractNotesList" style="max-height:420px;overflow-y:auto;margin-bottom:12px;">
+                    ${notes.length ? notes.map(n => `
+                        <div style="padding:10px;background:var(--bg-secondary);border-radius:8px;margin-bottom:8px;border-left:3px solid ${n.color || '#4a6cf7'};">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                <strong style="font-size:0.85rem;">${escapeHtml(n.author)}</strong>
+                                <div>
+                                    <span style="font-size:0.72rem;color:var(--text-secondary);">${new Date(n.createdAt).toLocaleString('tr-TR')}</span>
+                                    ${n.author === currentUser ? `<button class="btn btn-sm btn-ghost" onclick="deleteContractNote('${contractId}','${n.id}')" style="padding:2px 6px;margin-left:4px;color:#e74c3c;"><i class="fas fa-trash"></i></button>` : ''}
+                                </div>
+                            </div>
+                            ${n.clauseRef ? `<div style="font-size:0.75rem;color:var(--primary);margin-bottom:4px;">📍 ${escapeHtml(n.clauseRef)}</div>` : ''}
+                            <div style="white-space:pre-wrap;font-size:0.88rem;">${escapeHtml(n.content)}</div>
+                        </div>`).join('') : '<p style="color:var(--text-secondary);text-align:center;padding:30px;">Henüz not yok. İlk notu ekleyin.</p>'}
+                </div>
+                <div style="padding:12px;background:var(--bg-secondary);border-radius:8px;">
+                    <div style="display:grid;grid-template-columns:1fr 120px 120px;gap:8px;margin-bottom:8px;">
+                        <input type="text" id="noteClauseRef" placeholder="Madde referansı (opsiyonel) - örn: Madde 5">
+                        <select id="noteColor">
+                            <option value="#4a6cf7">🔵 Not</option>
+                            <option value="#2ecc71">🟢 Onay</option>
+                            <option value="#f39c12">🟡 Dikkat</option>
+                            <option value="#e74c3c">🔴 İtiraz</option>
+                            <option value="#9b59b6">🟣 Soru</option>
+                        </select>
+                        <button class="btn btn-primary btn-sm" onclick="addContractNote('${contractId}')"><i class="fas fa-plus"></i> Ekle</button>
+                    </div>
+                    <textarea id="noteContent" rows="3" placeholder="Yorumunuzu yazın..."></textarea>
+                </div>
+            </div>
+        </div>`;
+        document.body.appendChild(modal);
+    };
+
+    window.addContractNote = function(contractId) {
+        const content = document.getElementById('noteContent').value.trim();
+        if (!content) { toast('Not içeriği boş olamaz', 'warning'); return; }
+        const notes = getContractNotes(contractId);
+        const currentUser = (DB.data.currentUser?.name) || localStorage.getItem('currentUser') || 'Anonim';
+        notes.push({
+            id: 'note-' + Date.now(),
+            author: currentUser,
+            content,
+            clauseRef: document.getElementById('noteClauseRef').value.trim(),
+            color: document.getElementById('noteColor').value,
+            createdAt: new Date().toISOString()
+        });
+        DB.save();
+        document.getElementById('contractNotesModal').remove();
+        window.openContractNotes(contractId);
+        updateContractNotesBadge(contractId);
+        toast('Not eklendi', 'success');
+    };
+
+    window.deleteContractNote = function(contractId, noteId) {
+        if (!confirm('Bu not silinsin mi?')) return;
+        const notes = getContractNotes(contractId);
+        const idx = notes.findIndex(n => n.id === noteId);
+        if (idx >= 0) {
+            notes.splice(idx, 1);
+            DB.save();
+            document.getElementById('contractNotesModal').remove();
+            window.openContractNotes(contractId);
+            updateContractNotesBadge(contractId);
+        }
+    };
+})();
+
+// ============================================================
+// FAZ 2 — GELİŞMİŞ MEVZUAT SİSTEMİ
+// (regwatch-turkey, legalhub, legal-agent'ten)
+// ============================================================
+(function() {
+    // ---------- 21 RESMİ KAYNAK LİSTESİ ----------
+    const MEVZUAT_SOURCES = [
+        { id: 'resmi-gazete', name: 'Resmi Gazete', url: 'https://www.resmigazete.gov.tr', category: 'gazete', icon: '📰' },
+        { id: 'mevzuat-gov', name: 'Mevzuat.gov.tr', url: 'https://www.mevzuat.gov.tr', category: 'mevzuat', icon: '⚖️' },
+        { id: 'spk', name: 'SPK', url: 'https://spk.gov.tr', category: 'finansal', icon: '💹' },
+        { id: 'bddk', name: 'BDDK', url: 'https://www.bddk.org.tr', category: 'finansal', icon: '🏦' },
+        { id: 'tcmb', name: 'TCMB', url: 'https://www.tcmb.gov.tr', category: 'finansal', icon: '🏛️' },
+        { id: 'kvkk', name: 'KVKK', url: 'https://kvkk.gov.tr', category: 'veri-koruma', icon: '🔒' },
+        { id: 'masak', name: 'MASAK', url: 'https://masak.hmb.gov.tr', category: 'finansal-suc', icon: '🚨' },
+        { id: 'rekabet', name: 'Rekabet Kurumu', url: 'https://www.rekabet.gov.tr', category: 'rekabet', icon: '⚔️' },
+        { id: 'reklam-kurulu', name: 'Reklam Kurulu', url: 'https://www.ticaret.gov.tr/tuketicinin-korunmasi', category: 'tuketici', icon: '📢' },
+        { id: 'vgm', name: 'VGM', url: 'https://www.vgm.gov.tr', category: 'vakif', icon: '🏛️' },
+        { id: 'sgk', name: 'SGK', url: 'https://www.sgk.gov.tr', category: 'is-hukuku', icon: '👷' },
+        { id: 'csgb', name: 'Çalışma Bakanlığı (İSG)', url: 'https://www.csgb.gov.tr', category: 'is-hukuku', icon: '🛡️' },
+        { id: 'csb', name: 'Çevre ve Şehircilik', url: 'https://csb.gov.tr', category: 'cevre', icon: '🌳' },
+        { id: 'ticaret', name: 'Ticaret Bakanlığı', url: 'https://www.ticaret.gov.tr', category: 'ticaret', icon: '🏪' },
+        { id: 'sanayi', name: 'Sanayi Bakanlığı', url: 'https://www.sanayi.gov.tr', category: 'sanayi', icon: '🏭' },
+        { id: 'uab', name: 'Ulaştırma Bakanlığı', url: 'https://www.uab.gov.tr', category: 'ulastirma', icon: '🚚' },
+        { id: 'turkpatent', name: 'Türk Patent Enstitüsü', url: 'https://www.turkpatent.gov.tr', category: 'fikri-mulkiyet', icon: '💡' },
+        { id: 'yargitay', name: 'Yargıtay', url: 'https://www.yargitay.gov.tr', category: 'yargi', icon: '⚖️' },
+        { id: 'danistay', name: 'Danıştay', url: 'https://www.danistay.gov.tr', category: 'yargi', icon: '🏛️' },
+        { id: 'gib', name: 'GİB (Gelir İdaresi)', url: 'https://www.gib.gov.tr', category: 'vergi', icon: '💰' },
+        { id: 'tubitak', name: 'TÜBİTAK', url: 'https://www.tubitak.gov.tr', category: 'ar-ge', icon: '🔬' }
+    ];
+
+    window.MEVZUAT_SOURCES = MEVZUAT_SOURCES;
+
+    // ---------- SEVERITY CLASSIFICATION ----------
+    const SEVERITY_KW = {
+        kritik: ['ceza', 'para cezası', 'idari para', 'iptal', 'lisans iptali', 'faaliyet izni iptali', 'yasaklama', 'yasak', 'men edil', 'ihlal', 'veri ihlali', 'durdurma', 'faaliyetten men', 'tasfiye', 'iflas'],
+        onemli: ['yönetmelik', 'tebliğ', 'değişiklik', 'düzenleme', 'kanun', 'mevzuat', 'izin', 'lisans', 'ruhsat', 'genelge', 'sirküler', 'uyarı', 'kurul kararı'],
+        bilgi: ['duyuru', 'bilgilendirme', 'ilan', 'toplantı', 'rapor', 'istatistik', 'atama', 'görevlendirme']
+    };
+
+    function classifySeverity(text) {
+        const t = (text || '').toLowerCase();
+        if (SEVERITY_KW.kritik.some(k => t.includes(k))) return 'kritik';
+        if (SEVERITY_KW.onemli.some(k => t.includes(k))) return 'onemli';
+        return 'bilgi';
+    }
+
+    window.classifyRegulationSeverity = classifySeverity;
+
+    // ---------- 1. 20+ KAYNAK TOPLU TARAMA (AI destekli simülasyon) ----------
+    window.bulkScanAllSources = async function() {
+        const btn = document.getElementById('btnBulkScan');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Tüm kaynaklar taranıyor...'; }
+        toast('21 kaynak AI ile taranıyor, 30-60 saniye sürebilir...', 'info');
+
+        const prompt = `Bir hukuk bürosu için Türkiye'deki resmi kaynaklardan SON 1 HAFTA içindeki güncel düzenlemeleri listele. Her kaynak için 1-3 adet varsayımsal ama gerçekçi güncel düzenleme üret (tarih: son 7 gün).
+
+KAYNAKLAR: ${MEVZUAT_SOURCES.map(s => s.name).join(', ')}
+
+Her kayıt için: source_id, title, summary (2-3 cümle), severity (kritik/onemli/bilgi), date (YYYY-MM-DD), tags (array).
+
+Sadece JSON array formatında yanıtla:
+[{"source_id":"...","title":"...","summary":"...","severity":"...","date":"2026-04-XX","tags":["..."]}]
+
+En az 15 kayıt üret, farklı kaynaklardan. Gerçek Türk mevzuatı konularına dayalı.`;
+
+        try {
+            const response = await callGeminiAPI(prompt);
+            const jsonMatch = response.match(/\[[\s\S]*\]/);
+            if (!jsonMatch) throw new Error('JSON yanıt alınamadı');
+            const items = JSON.parse(jsonMatch[0]);
+
+            if (!DB.data.regulations) DB.data.regulations = [];
+            let added = 0;
+            items.forEach(item => {
+                const exists = DB.data.regulations.some(r => r.title === item.title && r.source === item.source_id);
+                if (exists) return;
+                DB.data.regulations.push({
+                    id: 'reg-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
+                    title: item.title,
+                    source: item.source_id,
+                    date: item.date || new Date().toISOString().split('T')[0],
+                    summary: item.summary || '',
+                    severity: item.severity || classifySeverity(item.title + ' ' + item.summary),
+                    tags: item.tags || [],
+                    read: false,
+                    addedAt: new Date().toISOString(),
+                    bulkScanAt: new Date().toISOString()
+                });
+                added++;
+            });
+            DB.save();
+            if (typeof renderRegulations === 'function') renderRegulations();
+            if (typeof updateNotificationBadge === 'function') updateNotificationBadge();
+            toast(`${added} yeni düzenleme eklendi`, 'success');
+        } catch (e) {
+            toast('Tarama hatası: ' + e.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-satellite-dish"></i> 21 Kaynak Toplu Tarama'; }
+        }
+    };
+
+    // ---------- 2. OTOMATİK TARAMA (09:00 / 18:00) ----------
+    window.setupAutoScan = function() {
+        const enabled = localStorage.getItem('autoScanEnabled') === 'true';
+        if (!enabled) return;
+
+        // Check every 5 minutes if it's time for scheduled scan
+        if (window._autoScanInterval) clearInterval(window._autoScanInterval);
+        window._autoScanInterval = setInterval(() => {
+            const now = new Date();
+            const h = now.getHours();
+            const m = now.getMinutes();
+            const lastScan = parseInt(localStorage.getItem('lastAutoScan') || '0');
+            const lastDate = new Date(lastScan);
+            const isNewDay = lastDate.toDateString() !== now.toDateString();
+
+            // Morning scan: 09:00-09:05
+            if (h === 9 && m < 5) {
+                const key = 'morning-' + now.toDateString();
+                if (localStorage.getItem('lastScanKey') !== key) {
+                    localStorage.setItem('lastScanKey', key);
+                    localStorage.setItem('lastAutoScan', Date.now().toString());
+                    toast('🌅 Sabah otomatik taraması başladı', 'info');
+                    window.bulkScanAllSources();
+                }
+            }
+            // Evening scan: 18:00-18:05
+            if (h === 18 && m < 5) {
+                const key = 'evening-' + now.toDateString();
+                if (localStorage.getItem('lastScanKey') !== key) {
+                    localStorage.setItem('lastScanKey', key);
+                    localStorage.setItem('lastAutoScan', Date.now().toString());
+                    toast('🌙 Akşam otomatik taraması başladı', 'info');
+                    window.bulkScanAllSources();
+                }
+            }
+        }, 5 * 60 * 1000); // Check every 5 minutes
+
+        console.log('Auto-scan enabled (09:00 + 18:00)');
+    };
+
+    window.toggleAutoScan = function() {
+        const current = localStorage.getItem('autoScanEnabled') === 'true';
+        const next = !current;
+        localStorage.setItem('autoScanEnabled', next.toString());
+        if (next) {
+            window.setupAutoScan();
+            toast('Otomatik tarama açıldı (09:00 ve 18:00)', 'success');
+        } else {
+            if (window._autoScanInterval) clearInterval(window._autoScanInterval);
+            toast('Otomatik tarama kapatıldı', 'info');
+        }
+        const btn = document.getElementById('btnAutoScanToggle');
+        if (btn) btn.innerHTML = next ? '<i class="fas fa-toggle-on"></i> Otomatik Tarama: AÇIK' : '<i class="fas fa-toggle-off"></i> Otomatik Tarama: KAPALI';
+    };
+
+    // ---------- 3. ÇAPRAZ REFERANS ANALİZİ ----------
+    function computeSimilarity(a, b) {
+        // Unicode-aware split to preserve Turkish characters
+        const tokenize = s => (s || '').toLocaleLowerCase('tr-TR').split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 3);
+        const wa = new Set(tokenize(a));
+        const wb = new Set(tokenize(b));
+        if (!wa.size || !wb.size) return 0;
+        const intersection = [...wa].filter(w => wb.has(w)).length;
+        const union = new Set([...wa, ...wb]).size;
+        return intersection / union; // Jaccard similarity
+    }
+
+    window.findCrossReferences = function() {
+        const regs = DB.data.regulations || [];
+        if (regs.length < 2) { toast('Çapraz referans için en az 2 düzenleme gerekli', 'warning'); return; }
+
+        const pairs = [];
+        for (let i = 0; i < regs.length; i++) {
+            for (let j = i + 1; j < regs.length; j++) {
+                if (regs[i].source === regs[j].source) continue;
+                const sim = computeSimilarity(regs[i].title + ' ' + regs[i].summary, regs[j].title + ' ' + regs[j].summary);
+                if (sim > 0.2) {
+                    pairs.push({
+                        a: regs[i],
+                        b: regs[j],
+                        similarity: Math.round(sim * 100)
+                    });
+                }
+            }
+        }
+        pairs.sort((a, b) => b.similarity - a.similarity);
+
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width:900px;max-height:92vh;">
+            <div class="modal-header">
+                <h3><i class="fas fa-link"></i> Çapraz Referans Analizi</h3>
+                <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--text-secondary);font-size:0.85rem;">Farklı kaynaklarda aynı konuyu ele alan düzenlemeler (Jaccard benzerlik skoru).</p>
+                ${pairs.length ? pairs.slice(0, 20).map(p => `
+                    <div style="padding:12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:8px;border-left:3px solid var(--primary);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                            <strong>Benzerlik: ${p.similarity}%</strong>
+                            <span style="padding:3px 8px;background:var(--primary);color:white;border-radius:10px;font-size:0.72rem;">${p.similarity >= 50 ? 'Yüksek' : p.similarity >= 30 ? 'Orta' : 'Düşük'}</span>
+                        </div>
+                        <div style="padding:8px;background:var(--bg-primary);border-radius:6px;margin-bottom:4px;">
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">📍 ${(MEVZUAT_SOURCES.find(s => s.id === p.a.source)?.name) || p.a.source}</div>
+                            <div style="font-size:0.88rem;font-weight:600;">${p.a.title}</div>
+                        </div>
+                        <div style="text-align:center;color:var(--primary);font-size:0.82rem;">⬇️</div>
+                        <div style="padding:8px;background:var(--bg-primary);border-radius:6px;">
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">📍 ${(MEVZUAT_SOURCES.find(s => s.id === p.b.source)?.name) || p.b.source}</div>
+                            <div style="font-size:0.88rem;font-weight:600;">${p.b.title}</div>
+                        </div>
+                    </div>`).join('') : '<p style="text-align:center;color:var(--text-secondary);padding:30px;">Çapraz referans bulunamadı. Daha fazla düzenleme ekleyin.</p>'}
+            </div>
+        </div>`;
+        document.body.appendChild(modal);
+    };
+
+    // ---------- 4. BİLDİRİM MERKEZİ (ZİL İKONU) ----------
+    window.updateNotificationBadge = function() {
+        const regs = DB.data.regulations || [];
+        const unreadCritical = regs.filter(r => !r.read && r.severity === 'kritik').length;
+        const unreadTotal = regs.filter(r => !r.read).length;
+        const badge = document.getElementById('notifBadge');
+        if (badge) {
+            if (unreadTotal > 0) {
+                badge.textContent = unreadTotal > 9 ? '9+' : unreadTotal;
+                badge.style.display = 'flex';
+                badge.style.background = unreadCritical > 0 ? '#e74c3c' : '#f39c12';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    };
+
+    window.openNotificationCenter = function() {
+        const regs = (DB.data.regulations || []).filter(r => !r.read);
+        const hearings = (DB.data.hearings || []).filter(h => {
+            const d = new Date(h.date);
+            const now = new Date();
+            const diff = (d - now) / 86400000;
+            return diff >= 0 && diff <= 3;
+        });
+        const deadlines = (DB.data.deadlines || []).filter(d => {
+            const dd = new Date(d.date);
+            const now = new Date();
+            const diff = (dd - now) / 86400000;
+            return diff >= 0 && diff <= 7;
+        });
+
+        // Sort regs by severity
+        const severityOrder = { kritik: 0, onemli: 1, bilgi: 2 };
+        regs.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+        const sevColors = { kritik: '#e74c3c', onemli: '#f39c12', bilgi: '#3498db' };
+        const sevIcons = { kritik: '🔴', onemli: '🟡', bilgi: '🟢' };
+
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.id = 'notifCenterModal';
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width:700px;max-height:92vh;">
+            <div class="modal-header">
+                <h3><i class="fas fa-bell"></i> Bildirim Merkezi</h3>
+                <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex;gap:8px;margin-bottom:12px;">
+                    <button class="btn btn-sm btn-outline" onclick="markAllRegulationsRead();this.closest('.modal').remove();openNotificationCenter();"><i class="fas fa-check-double"></i> Tümünü Okundu İşaretle</button>
+                </div>
+
+                ${hearings.length ? `
+                <h4 style="margin:12px 0 6px;"><i class="fas fa-gavel" style="color:#e67e22;"></i> Yaklaşan Duruşmalar (3 gün)</h4>
+                ${hearings.slice(0,5).map(h => `<div style="padding:8px;background:rgba(230,126,34,0.1);border-left:3px solid #e67e22;border-radius:6px;margin-bottom:4px;font-size:0.85rem;"><strong>${h.subject || h.client}</strong><div style="font-size:0.72rem;color:var(--text-secondary);">${new Date(h.date).toLocaleDateString('tr-TR')} ${h.time || ''} | ${h.court || ''}</div></div>`).join('')}
+                ` : ''}
+
+                ${deadlines.length ? `
+                <h4 style="margin:12px 0 6px;"><i class="fas fa-clock" style="color:#f39c12;"></i> Yaklaşan Süreler (7 gün)</h4>
+                ${deadlines.slice(0,5).map(d => `<div style="padding:8px;background:rgba(243,156,18,0.1);border-left:3px solid #f39c12;border-radius:6px;margin-bottom:4px;font-size:0.85rem;"><strong>${d.description || d.type}</strong><div style="font-size:0.72rem;color:var(--text-secondary);">${new Date(d.date).toLocaleDateString('tr-TR')}</div></div>`).join('')}
+                ` : ''}
+
+                ${regs.length ? `
+                <h4 style="margin:12px 0 6px;"><i class="fas fa-satellite-dish" style="color:var(--primary);"></i> Okunmamış Mevzuat (${regs.length})</h4>
+                ${regs.slice(0, 15).map(r => `
+                    <div style="padding:10px;background:var(--bg-secondary);border-left:3px solid ${sevColors[r.severity]};border-radius:6px;margin-bottom:6px;cursor:pointer;" onclick="markRegulationRead('${r.id}');this.closest('.modal').remove();openNotificationCenter();">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                            <span style="font-size:0.72rem;color:var(--text-secondary);">${sevIcons[r.severity]} ${(MEVZUAT_SOURCES.find(s => s.id === r.source)?.name) || r.source}</span>
+                            <span style="font-size:0.72rem;color:var(--text-secondary);">${new Date(r.date).toLocaleDateString('tr-TR')}</span>
+                        </div>
+                        <div style="font-size:0.88rem;font-weight:600;">${r.title}</div>
+                        ${r.summary ? `<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">${r.summary.substring(0, 150)}${r.summary.length > 150 ? '...' : ''}</div>` : ''}
+                    </div>`).join('')}
+                ` : ''}
+
+                ${!regs.length && !hearings.length && !deadlines.length ? '<p style="text-align:center;color:var(--text-secondary);padding:30px;">🎉 Yeni bildirim yok!</p>' : ''}
+            </div>
+        </div>`;
+        document.body.appendChild(modal);
+    };
+
+    window.markAllRegulationsRead = function() {
+        (DB.data.regulations || []).forEach(r => r.read = true);
+        DB.save();
+        updateNotificationBadge();
+        if (typeof renderRegulations === 'function') renderRegulations();
+    };
+
+    window.markRegulationRead = function(id) {
+        const r = (DB.data.regulations || []).find(x => x.id === id);
+        if (r) { r.read = true; DB.save(); updateNotificationBadge(); }
+    };
+
+    // ---------- 5. EXCEL DIŞA AKTARMA ----------
+    window.exportRegulationsExcel = function() {
+        const regs = DB.data.regulations || [];
+        if (!regs.length) { toast('Dışa aktarılacak düzenleme yok', 'warning'); return; }
+
+        // Apply current filters
+        const search = (document.getElementById('regSearchInput')?.value || '').toLowerCase();
+        const sourceF = document.getElementById('regSourceFilter')?.value || '';
+        const impF = document.getElementById('regImportanceFilter')?.value || '';
+
+        let filtered = regs;
+        if (search) filtered = filtered.filter(r => (r.title + ' ' + (r.summary||'')).toLowerCase().includes(search));
+        if (sourceF) filtered = filtered.filter(r => r.source === sourceF);
+        if (impF) filtered = filtered.filter(r => r.severity === impF);
+
+        // Build CSV (Excel-compatible) with BOM for Turkish chars
+        const BOM = '\uFEFF';
+        const headers = ['Tarih', 'Kaynak', 'Başlık', 'Özet', 'Önem', 'Etiketler', 'Okundu'];
+        const rows = filtered.map(r => [
+            r.date || '',
+            (MEVZUAT_SOURCES.find(s => s.id === r.source)?.name) || r.source,
+            (r.title || '').replace(/"/g, '""'),
+            (r.summary || '').replace(/"/g, '""').replace(/\n/g, ' '),
+            { kritik: 'Kritik', onemli: 'Önemli', bilgi: 'Bilgi' }[r.severity] || r.severity,
+            (r.tags || []).join(', '),
+            r.read ? 'Evet' : 'Hayır'
+        ]);
+
+        const csv = BOM + [headers, ...rows].map(row => row.map(c => `"${c}"`).join(';')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `akgul-legal-mevzuat-${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast(`${filtered.length} kayıt Excel'e aktarıldı`, 'success');
+    };
+
+    // ---------- 6. WEB SCRAPING (mevzuat.gov.tr) ----------
+    window.scrapeMevzuatGov = async function(query) {
+        const q = query || prompt('Mevzuat.gov.tr\'de aranacak terim (örn: 6098 sayılı, KVKK):');
+        if (!q) return;
+
+        toast('Mevzuat.gov.tr aranıyor...', 'info');
+
+        // NOTE: Direct scraping blocked by CORS. Use Gemini AI to simulate + provide known data.
+        const prompt2 = `Türkiye mevzuat.gov.tr'de "${q}" arandığında dönebilecek gerçek Türk mevzuat sonuçlarını listele. Her sonuç için:
+- kanun_no (örn: 6098)
+- kanun_adi (tam ad)
+- kabul_tarihi
+- ilgili_maddeler (ilgili madde numaraları ve kısa özetleri)
+- mevzuat_turu (Kanun/KHK/Yönetmelik/Tebliğ)
+- ozet (2-3 cümle)
+- url (mevzuat.gov.tr linki)
+
+Sadece JSON array:
+[{"kanun_no":"","kanun_adi":"","kabul_tarihi":"","mevzuat_turu":"","ozet":"","url":"","ilgili_maddeler":[{"madde":"","ozet":""}]}]
+
+En fazla 5 sonuç. Gerçek Türk mevzuatına dayalı.`;
+
+        try {
+            const response = await callGeminiAPI(prompt2);
+            const jsonMatch = response.match(/\[[\s\S]*\]/);
+            if (!jsonMatch) throw new Error('Yanıt alınamadı');
+            const results = JSON.parse(jsonMatch[0]);
+
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+            <div class="modal-content" style="max-width:900px;max-height:92vh;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-globe"></i> Mevzuat.gov.tr Arama: "${q}"</h3>
+                    <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    ${results.map(r => `
+                        <div style="padding:12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:10px;border-left:3px solid var(--primary);">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                                <strong style="font-size:1rem;">${escapeHtml2(r.kanun_adi)}</strong>
+                                <span style="padding:3px 8px;background:var(--primary);color:white;border-radius:10px;font-size:0.72rem;">${r.mevzuat_turu || 'Kanun'}</span>
+                            </div>
+                            <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:6px;">📋 ${r.kanun_no || '-'} | 📅 ${r.kabul_tarihi || '-'}</div>
+                            <div style="font-size:0.85rem;margin-bottom:8px;">${escapeHtml2(r.ozet || '')}</div>
+                            ${r.ilgili_maddeler?.length ? `
+                                <div style="padding:8px;background:var(--bg-primary);border-radius:6px;">
+                                    <strong style="font-size:0.82rem;">İlgili Maddeler:</strong>
+                                    ${r.ilgili_maddeler.map(m => `<div style="font-size:0.78rem;padding:4px 0;"><strong>${m.madde}:</strong> ${escapeHtml2(m.ozet || '')}</div>`).join('')}
+                                </div>` : ''}
+                            ${r.url ? `<div style="margin-top:6px;"><a href="${r.url}" target="_blank" style="color:var(--primary);font-size:0.78rem;"><i class="fas fa-external-link-alt"></i> Resmi Kaynakta Görüntüle</a></div>` : ''}
+                        </div>`).join('')}
+                </div>
+            </div>`;
+            document.body.appendChild(modal);
+        } catch (e) {
+            toast('Arama hatası: ' + e.message, 'error');
+        }
+    };
+
+    function escapeHtml2(s) {
+        return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+
+    // ---------- 7. GELİŞMİŞ REFERANS ÇIKARMA ----------
+    const REF_PATTERNS = {
+        kanun: /(\d{3,5})\s+sayılı\s+([A-ZÇĞİÖŞÜa-zçğıöşü\s]+?(?:Kanunu?|Kanun\s+Hükmünde\s+Kararname))/g,
+        teblig: /([IVXLCDM]+-[\d.]+-[\d.]+)\s+(?:sayılı\s+)?([A-ZÇĞİÖŞÜa-zçğıöşü\s]+?Tebliğ\w*)/g,
+        madde: /(?:MADDE|Madde)\s+(\d+)(?:\s*\((\d+)\))?\s*[-–—.]?\s*([^\n]{0,100})/g,
+        maddeRef: /(\d+)\.\s*madde/g,
+        maddeRef2: /(\d+)[iıüu]nc[iıüu]\s+madde/g,
+        sayiliRef: /(\d{3,5})\s+sayılı/g,
+        yonetmelik: /([A-ZÇĞİÖŞÜa-zçğıöşü\s]{5,80})\s+Yönetmelik\w*/g,
+        genelge: /([A-ZÇĞİÖŞÜa-zçğıöşü\s]{5,80})\s+Genelge\w*/g
+    };
+
+    window.extractLegalReferences = function(text) {
+        const refs = {
+            kanunlar: [],
+            maddeler: [],
+            tebligler: [],
+            yonetmelikler: [],
+            genelgeler: [],
+            sayiliRefs: []
+        };
+
+        // Kanunlar
+        let m;
+        const kanunRe = new RegExp(REF_PATTERNS.kanun.source, 'g');
+        while ((m = kanunRe.exec(text)) !== null) {
+            refs.kanunlar.push({ no: m[1], ad: m[2].trim(), tam: m[0] });
+        }
+
+        // Maddeler
+        const maddeRe = new RegExp(REF_PATTERNS.madde.source, 'g');
+        while ((m = maddeRe.exec(text)) !== null) {
+            refs.maddeler.push({ no: m[1], fikra: m[2], baslik: (m[3] || '').trim() });
+        }
+
+        // Tebliğler
+        const tebRe = new RegExp(REF_PATTERNS.teblig.source, 'g');
+        while ((m = tebRe.exec(text)) !== null) {
+            refs.tebligler.push({ no: m[1], ad: m[2].trim() });
+        }
+
+        // Yönetmelikler
+        const yonRe = new RegExp(REF_PATTERNS.yonetmelik.source, 'g');
+        while ((m = yonRe.exec(text)) !== null) {
+            refs.yonetmelikler.push({ ad: (m[1] + ' Yönetmelik').trim() });
+        }
+
+        // Genelgeler
+        const genRe = new RegExp(REF_PATTERNS.genelge.source, 'g');
+        while ((m = genRe.exec(text)) !== null) {
+            refs.genelgeler.push({ ad: (m[1] + ' Genelge').trim() });
+        }
+
+        // Sayılı referanslar (duplicate'ları filtrele)
+        const sayiliRe = new RegExp(REF_PATTERNS.sayiliRef.source, 'g');
+        const seen = new Set();
+        while ((m = sayiliRe.exec(text)) !== null) {
+            if (!seen.has(m[1])) { refs.sayiliRefs.push(m[1]); seen.add(m[1]); }
+        }
+
+        // Deduplicate
+        refs.kanunlar = Array.from(new Map(refs.kanunlar.map(k => [k.no, k])).values());
+
+        return refs;
+    };
+
+    window.showReferenceExtractor = function() {
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width:800px;max-height:92vh;">
+            <div class="modal-header">
+                <h3><i class="fas fa-link"></i> Hukuki Referans Çıkarma</h3>
+                <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--text-secondary);font-size:0.85rem;">Metni yapıştırın, kanun/madde/tebliğ/yönetmelik referansları otomatik çıkarılsın.</p>
+                <textarea id="refExtractInput" rows="8" placeholder="Hukuki metin yapıştırın..."></textarea>
+                <button class="btn btn-primary" style="margin-top:8px;" onclick="runReferenceExtraction()"><i class="fas fa-search"></i> Referansları Çıkar</button>
+                <div id="refExtractResult" style="margin-top:14px;"></div>
+            </div>
+        </div>`;
+        document.body.appendChild(modal);
+    };
+
+    window.runReferenceExtraction = function() {
+        const text = document.getElementById('refExtractInput').value;
+        if (!text.trim()) { toast('Metin girin', 'warning'); return; }
+        const refs = extractLegalReferences(text);
+        const el = document.getElementById('refExtractResult');
+
+        const total = refs.kanunlar.length + refs.maddeler.length + refs.tebligler.length + refs.yonetmelikler.length + refs.genelgeler.length;
+
+        el.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px;">
+                <div style="padding:8px;background:rgba(74,108,247,0.1);border-radius:6px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:var(--primary);">${refs.kanunlar.length}</div><div style="font-size:0.7rem;">Kanun</div></div>
+                <div style="padding:8px;background:rgba(46,204,113,0.1);border-radius:6px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:#2ecc71;">${refs.maddeler.length}</div><div style="font-size:0.7rem;">Madde</div></div>
+                <div style="padding:8px;background:rgba(155,89,182,0.1);border-radius:6px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:#9b59b6;">${refs.tebligler.length}</div><div style="font-size:0.7rem;">Tebliğ</div></div>
+                <div style="padding:8px;background:rgba(230,126,34,0.1);border-radius:6px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:#e67e22;">${refs.yonetmelikler.length}</div><div style="font-size:0.7rem;">Yönetmelik</div></div>
+                <div style="padding:8px;background:rgba(243,156,18,0.1);border-radius:6px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:#f39c12;">${refs.genelgeler.length}</div><div style="font-size:0.7rem;">Genelge</div></div>
+            </div>
+            ${refs.kanunlar.length ? `<div style="margin-bottom:10px;"><h5>📜 Kanunlar</h5>${refs.kanunlar.map(k => `<div style="padding:6px 8px;background:var(--bg-secondary);border-radius:4px;margin-bottom:3px;font-size:0.85rem;cursor:pointer;" onclick="searchMevzuat && (document.getElementById('mevzuatSearchInput').value='${k.no} sayılı ${k.ad}',document.querySelector('.nav-item[data-page=tools]').click(),document.querySelector('.tab-btn[data-tab=mevzuat-search-tab]').click())"><strong>${k.no}</strong> sayılı ${escapeHtml2(k.ad)}</div>`).join('')}</div>` : ''}
+            ${refs.maddeler.length ? `<div style="margin-bottom:10px;"><h5>📖 Maddeler</h5>${refs.maddeler.slice(0,20).map(m => `<div style="padding:6px 8px;background:var(--bg-secondary);border-radius:4px;margin-bottom:3px;font-size:0.85rem;"><strong>Madde ${m.no}${m.fikra ? '('+m.fikra+')' : ''}</strong>${m.baslik ? ' — ' + escapeHtml2(m.baslik) : ''}</div>`).join('')}</div>` : ''}
+            ${refs.tebligler.length ? `<div style="margin-bottom:10px;"><h5>📋 Tebliğler</h5>${refs.tebligler.map(t => `<div style="padding:6px 8px;background:var(--bg-secondary);border-radius:4px;margin-bottom:3px;font-size:0.85rem;"><strong>${t.no}</strong> ${escapeHtml2(t.ad)}</div>`).join('')}</div>` : ''}
+            ${refs.yonetmelikler.length ? `<div style="margin-bottom:10px;"><h5>⚖️ Yönetmelikler</h5>${refs.yonetmelikler.map(y => `<div style="padding:6px 8px;background:var(--bg-secondary);border-radius:4px;margin-bottom:3px;font-size:0.85rem;">${escapeHtml2(y.ad)}</div>`).join('')}</div>` : ''}
+            ${!total ? '<p style="text-align:center;color:var(--text-secondary);padding:20px;">Referans bulunamadı.</p>' : ''}
+        `;
+    };
+
+    // Initialize on load
+    if (typeof window !== 'undefined') {
+        setTimeout(() => {
+            if (localStorage.getItem('autoScanEnabled') === 'true') window.setupAutoScan();
+            updateNotificationBadge();
+        }, 1500);
+    }
+})();
+
+// ============================================================
+// FAZ 3 — YETKİ DELEGASYONU (Görüş Atama / Assignment)
+// legal-opinions projesinden uyarlandı
+// ============================================================
+(function() {
+    function getOpinions() { return DB.data.opinions || []; }
+    function saveOpinions(arr) { DB.data.opinions = arr; DB.save(); }
+    function getUsers() { return (DB.data.users || []).filter(u => u && u.name); }
+    function currentUserName() {
+        return DB.data.currentUser?.name || localStorage.getItem('currentUser') || 'Avukat 1';
+    }
+
+    const DELEGATION_STATUS = {
+        pending: { label: 'Atama Bekliyor', color: '#95a5a6' },
+        assigned: { label: 'Atandı', color: '#3498db' },
+        in_progress: { label: 'Çalışılıyor', color: '#f39c12' },
+        submitted: { label: 'Teslim Edildi', color: '#9b59b6' },
+        completed: { label: 'Tamamlandı', color: '#2ecc71' },
+        declined: { label: 'Reddedildi', color: '#e74c3c' }
+    };
+
+    // Modal: Assign / delegate an opinion to another lawyer
+    window.openOpinionDelegation = function(opinionId) {
+        const op = getOpinions().find(o => o.id === opinionId);
+        if (!op) { toast('Görüş bulunamadı', 'error'); return; }
+
+        const users = getUsers();
+        if (!users.length) {
+            toast('Atama yapmak için Ayarlar > Kullanıcılar kısmından avukat ekleyin', 'warning');
+            return;
+        }
+
+        const existing = document.getElementById('delegationModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'delegationModal';
+        modal.className = 'modal active';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10003;';
+
+        const history = op.delegationHistory || [];
+        const currentAssignee = op.assignedTo || '';
+        const delegStatus = op.delegationStatus || 'pending';
+
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width:720px;max-height:92vh;overflow-y:auto;background:var(--bg-primary);border-radius:12px;padding:24px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h3><i class="fas fa-user-shield"></i> Yetki Delegasyonu — ${op.refNo}</h3>
+                <button class="btn btn-sm btn-outline" onclick="this.closest('#delegationModal').remove()">&times;</button>
+            </div>
+            <div style="padding:10px;background:var(--bg-secondary);border-radius:8px;margin-bottom:14px;">
+                <strong>${op.title}</strong>
+                <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">
+                    Yazar: ${op.author || '-'} |
+                    Durum: <span style="color:${DELEGATION_STATUS[delegStatus]?.color || '#999'};font-weight:600;">${DELEGATION_STATUS[delegStatus]?.label || delegStatus}</span>
+                    ${currentAssignee ? ` | Atanan: <strong>${currentAssignee}</strong>` : ''}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Atanacak Avukat</label>
+                <select id="delegAssignee">
+                    <option value="">-- Avukat seç --</option>
+                    ${users.map(u => `<option value="${u.name}" ${u.name === currentAssignee ? 'selected' : ''}>${u.name}${u.role ? ' ('+u.role+')' : ''}</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Yetki Seviyesi</label>
+                    <select id="delegAuthLevel">
+                        <option value="review">Sadece İnceleme</option>
+                        <option value="edit" selected>Düzenleme + Yorum</option>
+                        <option value="full">Tam Yetki (onay dahil)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Teslim Tarihi</label>
+                    <input type="date" id="delegDueDate" value="${op.assignmentDueDate || ''}">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Talimat / Not</label>
+                <textarea id="delegInstructions" rows="4" placeholder="Atanan avukata özel talimatlar, beklentiler, kısıtlar...">${op.assignmentInstructions || ''}</textarea>
+            </div>
+            <div class="form-group">
+                <label><input type="checkbox" id="delegNotify" checked> Atanana e-posta bildirimi hazırla</label>
+            </div>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+                <button class="btn btn-primary" onclick="assignOpinion('${op.id}')"><i class="fas fa-paper-plane"></i> Ata / Gönder</button>
+                ${currentAssignee ? `<button class="btn btn-outline" onclick="unassignOpinion('${op.id}')"><i class="fas fa-times"></i> Atamayı Kaldır</button>` : ''}
+                ${delegStatus === 'assigned' ? `
+                    <button class="btn btn-outline" style="color:#f39c12;" onclick="updateDelegationStatus('${op.id}','in_progress')"><i class="fas fa-play"></i> Çalışmaya Başla</button>
+                ` : ''}
+                ${delegStatus === 'in_progress' ? `
+                    <button class="btn btn-outline" style="color:#9b59b6;" onclick="updateDelegationStatus('${op.id}','submitted')"><i class="fas fa-check"></i> Teslim Et</button>
+                ` : ''}
+                ${delegStatus === 'submitted' ? `
+                    <button class="btn btn-outline" style="color:#2ecc71;" onclick="updateDelegationStatus('${op.id}','completed')"><i class="fas fa-check-double"></i> Kabul Et</button>
+                    <button class="btn btn-outline" style="color:#e74c3c;" onclick="updateDelegationStatus('${op.id}','in_progress')"><i class="fas fa-undo"></i> Geri Gönder</button>
+                ` : ''}
+            </div>
+
+            ${history.length ? `
+                <div style="margin-top:18px;">
+                    <h4 style="font-size:0.9rem;margin-bottom:8px;">Delegasyon Geçmişi</h4>
+                    <div style="max-height:200px;overflow-y:auto;">
+                        ${history.slice().reverse().map(h => `
+                            <div style="padding:8px;background:var(--bg-secondary);border-radius:6px;margin-bottom:6px;font-size:0.78rem;border-left:3px solid ${DELEGATION_STATUS[h.status]?.color || '#999'};">
+                                <div style="display:flex;justify-content:space-between;">
+                                    <strong>${DELEGATION_STATUS[h.status]?.label || h.status}</strong>
+                                    <span style="color:var(--text-secondary);">${new Date(h.date).toLocaleString('tr-TR')}</span>
+                                </div>
+                                <div style="color:var(--text-secondary);margin-top:2px;">${h.by || '-'}${h.to ? ' → ' + h.to : ''}</div>
+                                ${h.note ? `<div style="margin-top:4px;font-style:italic;">${h.note}</div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+        </div>`;
+        document.body.appendChild(modal);
+    };
+
+    window.assignOpinion = function(opinionId) {
+        const opinions = getOpinions();
+        const op = opinions.find(o => o.id === opinionId);
+        if (!op) return;
+
+        const assignee = document.getElementById('delegAssignee')?.value;
+        if (!assignee) { toast('Atanacak avukat seçin', 'warning'); return; }
+
+        const authLevel = document.getElementById('delegAuthLevel')?.value || 'edit';
+        const dueDate = document.getElementById('delegDueDate')?.value || '';
+        const instructions = document.getElementById('delegInstructions')?.value || '';
+        const notify = document.getElementById('delegNotify')?.checked;
+
+        const now = new Date().toISOString();
+        const by = currentUserName();
+
+        op.assignedTo = assignee;
+        op.assignedBy = by;
+        op.assignedAt = now;
+        op.assignmentAuthLevel = authLevel;
+        op.assignmentDueDate = dueDate;
+        op.assignmentInstructions = instructions;
+        op.delegationStatus = 'assigned';
+
+        if (!op.delegationHistory) op.delegationHistory = [];
+        op.delegationHistory.push({
+            status: 'assigned',
+            by: by,
+            to: assignee,
+            date: now,
+            note: instructions ? instructions.substring(0, 120) : 'Atama yapıldı'
+        });
+
+        op.updatedAt = now;
+        saveOpinions(opinions);
+
+        document.getElementById('delegationModal')?.remove();
+        if (typeof renderOpinions === 'function') renderOpinions();
+        toast(`${assignee} avukatına atandı`, 'success');
+
+        // Trigger notification email draft
+        if (notify) {
+            setTimeout(() => generateDelegationNotification(op.id), 300);
+        }
+    };
+
+    window.unassignOpinion = function(opinionId) {
+        if (!confirm('Atamayı kaldırmak istediğinizden emin misiniz?')) return;
+        const opinions = getOpinions();
+        const op = opinions.find(o => o.id === opinionId);
+        if (!op) return;
+
+        const now = new Date().toISOString();
+        const by = currentUserName();
+        if (!op.delegationHistory) op.delegationHistory = [];
+        op.delegationHistory.push({
+            status: 'pending',
+            by: by,
+            to: op.assignedTo,
+            date: now,
+            note: 'Atama kaldırıldı'
+        });
+
+        op.assignedTo = '';
+        op.delegationStatus = 'pending';
+        op.updatedAt = now;
+        saveOpinions(opinions);
+
+        document.getElementById('delegationModal')?.remove();
+        if (typeof renderOpinions === 'function') renderOpinions();
+        toast('Atama kaldırıldı', 'info');
+    };
+
+    window.updateDelegationStatus = function(opinionId, newStatus) {
+        const opinions = getOpinions();
+        const op = opinions.find(o => o.id === opinionId);
+        if (!op) return;
+
+        const now = new Date().toISOString();
+        op.delegationStatus = newStatus;
+        op.updatedAt = now;
+        if (!op.delegationHistory) op.delegationHistory = [];
+        op.delegationHistory.push({
+            status: newStatus,
+            by: currentUserName(),
+            to: op.assignedTo,
+            date: now
+        });
+        saveOpinions(opinions);
+        document.getElementById('delegationModal')?.remove();
+        window.openOpinionDelegation(opinionId);
+        if (typeof renderOpinions === 'function') renderOpinions();
+        toast(`Durum güncellendi: ${DELEGATION_STATUS[newStatus]?.label}`, 'success');
+    };
+
+    // Generate email notification for the assigned lawyer
+    window.generateDelegationNotification = function(opinionId) {
+        const op = getOpinions().find(o => o.id === opinionId);
+        if (!op || !op.assignedTo) return;
+
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+            body{font-family:Inter,Arial,sans-serif;max-width:640px;margin:0 auto;padding:20px;color:#2c3e50;}
+            .header{background:linear-gradient(135deg,#4a6cf7,#8f5bf7);color:#fff;padding:20px;border-radius:10px 10px 0 0;}
+            .body{background:#fff;padding:20px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 10px 10px;}
+            .box{background:#f8f9fa;padding:14px;border-radius:8px;margin:10px 0;border-left:4px solid #4a6cf7;}
+            .meta{font-size:0.82rem;color:#7f8c8d;}
+            .btn{display:inline-block;padding:10px 18px;background:#4a6cf7;color:#fff;text-decoration:none;border-radius:6px;margin-top:10px;}
+        </style></head><body>
+            <div class="header">
+                <h2 style="margin:0;">🔔 Yeni Görev Ataması</h2>
+                <p style="margin:4px 0 0;opacity:0.9;">Akgül Legal — Hukuki Görüş Delegasyonu</p>
+            </div>
+            <div class="body">
+                <p>Sayın <strong>${op.assignedTo}</strong>,</p>
+                <p>Size aşağıdaki hukuki görüş atanmıştır:</p>
+                <div class="box">
+                    <div class="meta">${op.refNo}</div>
+                    <h3 style="margin:4px 0;">${op.title}</h3>
+                    <div class="meta">Kategori: ${op.category || '-'} | Öncelik: ${op.priority || 'normal'}</div>
+                    ${op.assignmentDueDate ? `<div style="color:#e74c3c;margin-top:8px;"><strong>⏰ Teslim: ${new Date(op.assignmentDueDate).toLocaleDateString('tr-TR')}</strong></div>` : ''}
+                </div>
+                ${op.assignmentInstructions ? `
+                <h4>Talimatlar</h4>
+                <div class="box">${op.assignmentInstructions.replace(/\n/g, '<br>')}</div>` : ''}
+                <h4>Yetki Seviyesi</h4>
+                <p>${op.assignmentAuthLevel === 'review' ? 'Sadece inceleme' : op.assignmentAuthLevel === 'edit' ? 'Düzenleme + yorum yapabilirsiniz' : 'Tam yetki — onay dahil'}</p>
+                <p style="margin-top:20px;" class="meta">Atayan: ${op.assignedBy} — ${new Date(op.assignedAt).toLocaleString('tr-TR')}</p>
+            </div>
+        </body></html>`;
+
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `delegasyon-${op.refNo}-${op.assignedTo.replace(/\s+/g, '_')}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('Bildirim e-postası indirildi', 'success');
+    };
+
+    // "Bana atananlar" filter panel
+    window.showMyAssignments = function() {
+        const me = currentUserName();
+        const myOps = getOpinions().filter(o => !o.deleted && o.assignedTo === me);
+
+        const existing = document.getElementById('myAssignmentsModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'myAssignmentsModal';
+        modal.className = 'modal active';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10003;';
+
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width:780px;max-height:88vh;overflow-y:auto;background:var(--bg-primary);border-radius:12px;padding:22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <h3><i class="fas fa-tasks"></i> Bana Atanan Görüşler (${myOps.length})</h3>
+                <button class="btn btn-sm btn-outline" onclick="this.closest('#myAssignmentsModal').remove()">&times;</button>
+            </div>
+            ${!myOps.length ? '<p style="text-align:center;color:var(--text-secondary);padding:30px;">Size atanmış görüş bulunmuyor.</p>' :
+                myOps.map(o => {
+                    const st = DELEGATION_STATUS[o.delegationStatus || 'assigned'];
+                    const overdue = o.assignmentDueDate && new Date(o.assignmentDueDate) < new Date() && o.delegationStatus !== 'completed';
+                    return `
+                    <div class="form-card" style="margin-bottom:8px;border-left:3px solid ${st.color};padding:12px;cursor:pointer;" onclick="document.getElementById('myAssignmentsModal').remove();viewOpinion('${o.id}')">
+                        <div style="display:flex;justify-content:space-between;align-items:start;">
+                            <div style="flex:1;">
+                                <span style="font-family:monospace;font-size:0.72rem;color:var(--text-secondary);">${o.refNo}</span>
+                                <span style="padding:2px 8px;border-radius:10px;font-size:0.68rem;background:${st.color}22;color:${st.color};margin-left:6px;">${st.label}</span>
+                                ${overdue ? '<span style="padding:2px 8px;border-radius:10px;font-size:0.68rem;background:#e74c3c22;color:#e74c3c;margin-left:4px;">GECİKMİŞ</span>' : ''}
+                                <h4 style="margin:6px 0 4px;font-size:0.95rem;">${o.title}</h4>
+                                <div style="font-size:0.72rem;color:var(--text-secondary);">
+                                    Atayan: ${o.assignedBy || '-'}
+                                    ${o.assignmentDueDate ? ` | Teslim: ${new Date(o.assignmentDueDate).toLocaleDateString('tr-TR')}` : ''}
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();document.getElementById('myAssignmentsModal').remove();openOpinionDelegation('${o.id}')">Yönet</button>
+                        </div>
+                    </div>`;
+                }).join('')
+            }
+        </div>`;
+        document.body.appendChild(modal);
+    };
+})();
+
+// ============================================================
+// FAZ 3 — DİNAMİK E-POSTA ŞABLONLARI (regwatch-python'dan uyarlandı)
+// Genişletilmiş HTML raporlar + şablon seçimi + önizleme
+// ============================================================
+(function() {
+    // Email template library
+    const EMAIL_TEMPLATES = {
+        modern: {
+            name: 'Modern Gradient',
+            description: 'Renkli gradyan header, kart tabanlı içerik',
+            primaryColor: '#4a6cf7',
+            accentColor: '#8f5bf7'
+        },
+        corporate: {
+            name: 'Kurumsal',
+            description: 'Sade, profesyonel, iki sütunlu',
+            primaryColor: '#2c3e50',
+            accentColor: '#34495e'
+        },
+        minimal: {
+            name: 'Minimal',
+            description: 'Düz tipografi, minimal görsel',
+            primaryColor: '#000000',
+            accentColor: '#666666'
+        },
+        warning: {
+            name: 'Acil / Uyarı',
+            description: 'Kırmızı tonlarda yüksek dikkat',
+            primaryColor: '#e74c3c',
+            accentColor: '#c0392b'
+        }
+    };
+
+    // Severity badge helper
+    function sevBadge(sev) {
+        const colors = { kritik: '#e74c3c', onemli: '#f39c12', bilgi: '#3498db' };
+        const labels = { kritik: 'KRİTİK', onemli: 'ÖNEMLİ', bilgi: 'BİLGİ' };
+        const c = colors[sev] || '#7f8c8d';
+        return `<span style="display:inline-block;padding:2px 8px;background:${c};color:#fff;border-radius:10px;font-size:0.68rem;font-weight:600;">${labels[sev] || sev || 'GENEL'}</span>`;
+    }
+
+    // Build rich HTML with template
+    function buildReportHTML(data, templateKey = 'modern') {
+        const t = EMAIL_TEMPLATES[templateKey] || EMAIL_TEMPLATES.modern;
+        const { title, subtitle, user, date, sections } = data;
+
+        const sectionsHTML = sections.map(s => {
+            if (!s.items || !s.items.length) {
+                return `<h2 style="color:${t.primaryColor};font-size:1rem;margin-top:24px;border-bottom:2px solid ${t.primaryColor}33;padding-bottom:6px;">${s.icon || ''} ${s.title}</h2>
+                <p style="color:#95a5a6;font-style:italic;font-size:0.88rem;">${s.emptyText || 'Kayıt yok'}</p>`;
+            }
+
+            const itemsHTML = s.items.map(item => {
+                const borderColor = item.critical ? '#e74c3c' : item.warning ? '#f39c12' : t.primaryColor;
+                return `
+                <div style="padding:12px 14px;background:#f8f9fa;border-radius:8px;margin-bottom:8px;border-left:4px solid ${borderColor};">
+                    <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;">
+                        <div style="flex:1;">
+                            <strong style="color:#2c3e50;font-size:0.92rem;">${item.title}</strong>
+                            ${item.sev ? ' ' + sevBadge(item.sev) : ''}
+                            ${item.subtitle ? `<div style="color:#7f8c8d;font-size:0.8rem;margin-top:4px;">${item.subtitle}</div>` : ''}
+                            ${item.content ? `<div style="color:#5a6c7d;font-size:0.82rem;margin-top:6px;line-height:1.5;">${item.content}</div>` : ''}
+                        </div>
+                        ${item.meta ? `<div style="font-size:0.72rem;color:#95a5a6;text-align:right;white-space:nowrap;">${item.meta}</div>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+
+            return `<h2 style="color:${t.primaryColor};font-size:1.05rem;margin-top:24px;border-bottom:2px solid ${t.primaryColor}33;padding-bottom:6px;">${s.icon || ''} ${s.title} <span style="font-size:0.82rem;color:#95a5a6;font-weight:400;">(${s.items.length})</span></h2>
+            ${itemsHTML}`;
+        }).join('');
+
+        const headerHTML = templateKey === 'modern' ? `
+            <div style="background:linear-gradient(135deg,${t.primaryColor},${t.accentColor});color:#fff;padding:28px 24px;border-radius:12px 12px 0 0;">
+                <h1 style="margin:0;font-size:1.4rem;">⚖️ ${title}</h1>
+                <p style="margin:6px 0 0;opacity:0.9;font-size:0.88rem;">${subtitle}</p>
+            </div>`
+        : templateKey === 'corporate' ? `
+            <div style="background:${t.primaryColor};color:#fff;padding:24px;border-bottom:4px solid #d4af37;">
+                <div style="font-size:0.75rem;letter-spacing:2px;opacity:0.7;">AKGÜL LEGAL</div>
+                <h1 style="margin:4px 0 0;font-size:1.3rem;font-weight:500;">${title}</h1>
+                <div style="font-size:0.82rem;opacity:0.85;margin-top:4px;">${subtitle}</div>
+            </div>`
+        : templateKey === 'warning' ? `
+            <div style="background:${t.primaryColor};color:#fff;padding:24px;border-radius:8px 8px 0 0;text-align:center;">
+                <div style="font-size:2rem;">⚠️</div>
+                <h1 style="margin:4px 0;font-size:1.3rem;">${title}</h1>
+                <p style="margin:0;opacity:0.95;font-size:0.85rem;">${subtitle}</p>
+            </div>`
+        : `
+            <div style="padding:20px 0;border-bottom:1px solid #e0e0e0;">
+                <h1 style="margin:0;font-size:1.3rem;color:${t.primaryColor};font-weight:300;">${title}</h1>
+                <p style="margin:4px 0 0;color:#888;font-size:0.85rem;">${subtitle}</p>
+            </div>`;
+
+        return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title></head>
+        <body style="font-family:-apple-system,Segoe UI,Inter,Arial,sans-serif;max-width:680px;margin:0 auto;padding:0;background:#f4f6f8;color:#2c3e50;">
+            <div style="background:#fff;margin:20px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
+                ${headerHTML}
+                <div style="padding:24px;">
+                    <div style="display:flex;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid #eee;margin-bottom:16px;font-size:0.82rem;color:#7f8c8d;">
+                        <span>📅 ${date}</span>
+                        <span>👤 ${user}</span>
+                    </div>
+                    ${sectionsHTML}
+                    <hr style="margin-top:28px;border:none;border-top:1px solid #eee;">
+                    <p style="text-align:center;color:#95a5a6;font-size:0.74rem;margin:12px 0 0;">
+                        Bu rapor <strong>Akgül Legal Büro Yönetim Sistemi</strong> tarafından otomatik oluşturulmuştur.<br>
+                        ${new Date().toLocaleString('tr-TR')}
+                    </p>
+                </div>
+            </div>
+        </body></html>`;
+    }
+
+    // Collect report data based on period type
+    function collectReportData(period) {
+        const now = new Date();
+        const user = DB.data.currentUser?.name || localStorage.getItem('currentUser') || 'Avukat';
+
+        const typeLabels = {
+            sabah: { title: 'Sabah Raporu', subtitle: 'Güne başlarken — bugünün özeti' },
+            aksam: { title: 'Akşam Raporu', subtitle: 'Yarının hazırlığı — bekleyen işler' },
+            haftalik: { title: 'Haftalık Özet', subtitle: 'Önümüzdeki 7 gün için planlama' },
+            acil: { title: 'Acil Uyarı', subtitle: 'Kritik ve gecikmiş öğeler' }
+        };
+
+        // Hearings
+        let hearings = [];
+        const hearingsData = DB.data.hearings || [];
+        if (period === 'sabah') {
+            hearings = hearingsData.filter(h => new Date(h.date).toDateString() === now.toDateString());
+        } else if (period === 'aksam') {
+            const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+            hearings = hearingsData.filter(h => new Date(h.date).toDateString() === tomorrow.toDateString());
+        } else if (period === 'haftalik') {
+            const week = new Date(now); week.setDate(week.getDate() + 7);
+            hearings = hearingsData.filter(h => { const d = new Date(h.date); return d >= now && d <= week; });
+        } else if (period === 'acil') {
+            const in3 = new Date(now); in3.setDate(in3.getDate() + 3);
+            hearings = hearingsData.filter(h => { const d = new Date(h.date); return d >= now && d <= in3; });
+        }
+
+        // Tasks
+        const tasks = (DB.data.tasks || []).filter(t => {
+            if (t.status === 'done') return false;
+            if (period === 'haftalik') return true;
+            if (period === 'acil') return !t.dueDate || new Date(t.dueDate) <= now;
+            const d = t.dueDate ? new Date(t.dueDate) : null;
+            return d && d <= new Date(now.getTime() + 86400000);
+        });
+
+        // Deadlines
+        const days = period === 'haftalik' ? 7 : period === 'acil' ? 2 : 3;
+        const deadlines = (DB.data.deadlines || []).filter(d => {
+            const dd = new Date(d.date);
+            return dd >= now && dd <= new Date(now.getTime() + days * 86400000);
+        });
+
+        // Regulations (unread)
+        const regs = (DB.data.regulations || []).filter(r => {
+            if (r.read) return false;
+            if (period === 'haftalik') return true;
+            if (period === 'acil') return r.severity === 'kritik';
+            return new Date(r.addedAt || r.date) >= new Date(now.getTime() - 86400000);
+        });
+
+        // My delegated opinions (Faz 3 integration)
+        const myAssignments = (DB.data.opinions || []).filter(o =>
+            !o.deleted && o.assignedTo === user && o.delegationStatus !== 'completed'
+        );
+
+        return {
+            title: `Akgül Legal — ${typeLabels[period].title}`,
+            subtitle: typeLabels[period].subtitle,
+            user: user,
+            date: now.toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+            sections: [
+                {
+                    title: 'Duruşmalar', icon: '📅',
+                    emptyText: 'Dönem içinde duruşma yok',
+                    items: hearings.map(h => ({
+                        title: h.subject || h.client || 'Duruşma',
+                        subtitle: `${h.court || ''}${h.caseNo ? ' • Dosya: ' + h.caseNo : ''}`,
+                        meta: `${new Date(h.date).toLocaleDateString('tr-TR')}${h.time ? '<br>' + h.time : ''}`,
+                        critical: new Date(h.date) < new Date(now.getTime() + 86400000)
+                    }))
+                },
+                {
+                    title: 'Görevler', icon: '📋',
+                    emptyText: 'Bekleyen görev yok',
+                    items: tasks.map(t => ({
+                        title: t.title,
+                        subtitle: t.assignee ? 'Atanan: ' + t.assignee : '',
+                        meta: t.dueDate ? new Date(t.dueDate).toLocaleDateString('tr-TR') : 'Tarih yok',
+                        critical: t.dueDate && new Date(t.dueDate) < now,
+                        warning: t.priority === 'high'
+                    }))
+                },
+                {
+                    title: 'Yaklaşan Süreler', icon: '⏰',
+                    emptyText: 'Yakın dönemde süre yok',
+                    items: deadlines.map(d => ({
+                        title: d.description || d.type,
+                        subtitle: d.caseNo || '',
+                        meta: new Date(d.date).toLocaleDateString('tr-TR'),
+                        warning: true
+                    }))
+                },
+                {
+                    title: 'Yeni Mevzuat', icon: '📰',
+                    emptyText: 'Yeni mevzuat yok',
+                    items: regs.slice(0, 10).map(r => ({
+                        title: r.title,
+                        subtitle: r.source || '',
+                        sev: r.severity,
+                        content: r.summary ? r.summary.substring(0, 200) + (r.summary.length > 200 ? '...' : '') : '',
+                        meta: r.date ? new Date(r.date).toLocaleDateString('tr-TR') : '',
+                        critical: r.severity === 'kritik',
+                        warning: r.severity === 'onemli'
+                    }))
+                },
+                {
+                    title: 'Bana Atanan Görüşler', icon: '👤',
+                    emptyText: 'Size atanmış görüş yok',
+                    items: myAssignments.map(o => ({
+                        title: o.title,
+                        subtitle: `${o.refNo} • Atayan: ${o.assignedBy || '-'}`,
+                        meta: o.assignmentDueDate ? 'Teslim: ' + new Date(o.assignmentDueDate).toLocaleDateString('tr-TR') : '',
+                        critical: o.assignmentDueDate && new Date(o.assignmentDueDate) < now,
+                        warning: o.priority === 'acil' || o.priority === 'yuksek'
+                    }))
+                }
+            ]
+        };
+    }
+
+    // Override the old generateEmailReport with enhanced version
+    const _oldGenerate = window.generateEmailReport;
+    window.generateEmailReport = function(period, templateKey) {
+        // If no template, show picker modal
+        if (!templateKey) {
+            return window.openEmailReportBuilder(period);
+        }
+
+        const data = collectReportData(period);
+        const html = buildReportHTML(data, templateKey);
+
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `akgul-legal-${period}-${templateKey}-${new Date().toISOString().split('T')[0]}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast(`${period} raporu (${EMAIL_TEMPLATES[templateKey].name}) indirildi`, 'success');
+    };
+
+    // New: Template picker + preview modal
+    window.openEmailReportBuilder = function(defaultPeriod) {
+        const existing = document.getElementById('emailReportBuilder');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'emailReportBuilder';
+        modal.className = 'modal active';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10003;';
+
+        modal.innerHTML = `
+        <div class="modal-content" style="max-width:900px;max-height:92vh;overflow-y:auto;background:var(--bg-primary);border-radius:12px;padding:22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <h3><i class="fas fa-envelope-open-text"></i> E-posta Raporu Oluşturucu</h3>
+                <button class="btn btn-sm btn-outline" onclick="this.closest('#emailReportBuilder').remove()">&times;</button>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Rapor Dönemi</label>
+                    <select id="reportPeriodSelect">
+                        <option value="sabah" ${defaultPeriod === 'sabah' ? 'selected' : ''}>🌅 Sabah Raporu (Bugün)</option>
+                        <option value="aksam" ${defaultPeriod === 'aksam' ? 'selected' : ''}>🌙 Akşam Raporu (Yarın)</option>
+                        <option value="haftalik" ${defaultPeriod === 'haftalik' ? 'selected' : ''}>📆 Haftalık Özet (7 Gün)</option>
+                        <option value="acil" ${defaultPeriod === 'acil' ? 'selected' : ''}>🚨 Acil Uyarı (Kritik)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tema / Şablon</label>
+                    <select id="reportTemplateSelect" onchange="refreshEmailPreview()">
+                        ${Object.entries(EMAIL_TEMPLATES).map(([k, v]) =>
+                            `<option value="${k}">${v.name} — ${v.description}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+                <button class="btn btn-sm btn-outline" onclick="refreshEmailPreview()"><i class="fas fa-sync"></i> Önizlemeyi Yenile</button>
+                <button class="btn btn-primary" onclick="downloadEmailReport()"><i class="fas fa-download"></i> İndir</button>
+                <button class="btn btn-outline" onclick="copyEmailReportHTML()"><i class="fas fa-copy"></i> HTML'i Kopyala</button>
+                <button class="btn btn-outline" onclick="openEmailClient()"><i class="fas fa-paper-plane"></i> E-posta İstemcisinde Aç</button>
+            </div>
+
+            <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#f4f6f8;">
+                <div style="padding:6px 12px;background:var(--bg-secondary);font-size:0.78rem;color:var(--text-secondary);border-bottom:1px solid var(--border);">
+                    <i class="fas fa-eye"></i> Canlı Önizleme
+                </div>
+                <iframe id="emailPreviewFrame" style="width:100%;height:500px;border:none;background:#fff;"></iframe>
+            </div>
+        </div>`;
+        document.body.appendChild(modal);
+        setTimeout(refreshEmailPreview, 100);
+    };
+
+    window.refreshEmailPreview = function() {
+        const period = document.getElementById('reportPeriodSelect')?.value || 'sabah';
+        const tpl = document.getElementById('reportTemplateSelect')?.value || 'modern';
+        const data = collectReportData(period);
+        const html = buildReportHTML(data, tpl);
+        const iframe = document.getElementById('emailPreviewFrame');
+        if (iframe) {
+            const doc = iframe.contentDocument || iframe.contentWindow.document;
+            doc.open(); doc.write(html); doc.close();
+        }
+    };
+
+    window.downloadEmailReport = function() {
+        const period = document.getElementById('reportPeriodSelect')?.value || 'sabah';
+        const tpl = document.getElementById('reportTemplateSelect')?.value || 'modern';
+        const data = collectReportData(period);
+        const html = buildReportHTML(data, tpl);
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `akgul-legal-${period}-${tpl}-${new Date().toISOString().split('T')[0]}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('Rapor indirildi', 'success');
+    };
+
+    window.copyEmailReportHTML = function() {
+        const period = document.getElementById('reportPeriodSelect')?.value || 'sabah';
+        const tpl = document.getElementById('reportTemplateSelect')?.value || 'modern';
+        const data = collectReportData(period);
+        const html = buildReportHTML(data, tpl);
+        navigator.clipboard.writeText(html).then(() => {
+            toast('HTML panoya kopyalandı', 'success');
+        }).catch(() => toast('Kopyalama başarısız', 'error'));
+    };
+
+    window.openEmailClient = function() {
+        const period = document.getElementById('reportPeriodSelect')?.value || 'sabah';
+        const data = collectReportData(period);
+        const subject = encodeURIComponent(data.title + ' — ' + data.date);
+        const body = encodeURIComponent(
+            data.title + '\n' + data.date + '\n\n' +
+            data.sections.map(s =>
+                `${s.title} (${s.items?.length || 0})\n` +
+                (s.items?.length ? s.items.map(i => '- ' + i.title + (i.meta ? ' [' + i.meta.replace(/<[^>]*>/g, ' ') + ']' : '')).join('\n') : s.emptyText)
+            ).join('\n\n')
+        );
+        window.open(`mailto:?subject=${subject}&body=${body}`);
     };
 })();
