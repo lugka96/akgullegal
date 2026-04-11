@@ -7649,6 +7649,40 @@ En fazla 5 sonuç ver. Gerçekçi ve güncel bilgiler olsun.` }] }], generationC
 })();
 
 // ============================================================
+// HELPER — callGeminiAPI (Faz 1/2/3 için merkezi Gemini çağrısı)
+// ============================================================
+if (typeof window.callGeminiAPI !== 'function') {
+    window.callGeminiAPI = async function(prompt, opts = {}) {
+        const apiKey = DB.data.settings?.geminiApiKey || document.getElementById('geminiApiKey')?.value;
+        if (!apiKey) {
+            throw new Error('Gemini API anahtarı gerekli. Ayarlar → AI Dilekçe sekmesinden girin.');
+        }
+        const body = {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+                temperature: opts.temperature ?? 0.3,
+                maxOutputTokens: opts.maxOutputTokens ?? 4096
+            }
+        };
+        const resp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }
+        );
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            throw new Error(data.error?.message || `HTTP ${resp.status}`);
+        }
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error('AI yanıt döndürmedi');
+        return text;
+    };
+}
+
+// ============================================================
 // FAZ 1 — GELİŞMİŞ SÖZLEŞME ANALİZİ (contract-shield'den)
 // ============================================================
 (function() {
@@ -8419,7 +8453,7 @@ En az 15 kayıt üret, farklı kaynaklardan. Gerçek Türk mevzuatı konularına
             for (let j = i + 1; j < regs.length; j++) {
                 if (regs[i].source === regs[j].source) continue;
                 const sim = computeSimilarity(regs[i].title + ' ' + regs[i].summary, regs[j].title + ' ' + regs[j].summary);
-                if (sim > 0.2) {
+                if (sim >= 0.15) {
                     pairs.push({
                         a: regs[i],
                         b: regs[j],
@@ -9213,20 +9247,21 @@ En fazla 5 sonuç. Gerçek Türk mevzuatına dayalı.`;
             acil: { title: 'Acil Uyarı', subtitle: 'Kritik ve gecikmiş öğeler' }
         };
 
-        // Hearings
+        // Hearings — normalize to start-of-day for date comparisons
         let hearings = [];
         const hearingsData = DB.data.hearings || [];
+        const today0 = new Date(now); today0.setHours(0,0,0,0);
         if (period === 'sabah') {
             hearings = hearingsData.filter(h => new Date(h.date).toDateString() === now.toDateString());
         } else if (period === 'aksam') {
             const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
             hearings = hearingsData.filter(h => new Date(h.date).toDateString() === tomorrow.toDateString());
         } else if (period === 'haftalik') {
-            const week = new Date(now); week.setDate(week.getDate() + 7);
-            hearings = hearingsData.filter(h => { const d = new Date(h.date); return d >= now && d <= week; });
+            const week = new Date(today0); week.setDate(week.getDate() + 7);
+            hearings = hearingsData.filter(h => { const d = new Date(h.date); return d >= today0 && d <= week; });
         } else if (period === 'acil') {
-            const in3 = new Date(now); in3.setDate(in3.getDate() + 3);
-            hearings = hearingsData.filter(h => { const d = new Date(h.date); return d >= now && d <= in3; });
+            const in3 = new Date(today0); in3.setDate(in3.getDate() + 3);
+            hearings = hearingsData.filter(h => { const d = new Date(h.date); return d >= today0 && d <= in3; });
         }
 
         // Tasks
@@ -9238,11 +9273,12 @@ En fazla 5 sonuç. Gerçek Türk mevzuatına dayalı.`;
             return d && d <= new Date(now.getTime() + 86400000);
         });
 
-        // Deadlines
+        // Deadlines — use start-of-day for inclusive date comparison
         const days = period === 'haftalik' ? 7 : period === 'acil' ? 2 : 3;
+        const deadlineEnd = new Date(today0); deadlineEnd.setDate(deadlineEnd.getDate() + days);
         const deadlines = (DB.data.deadlines || []).filter(d => {
             const dd = new Date(d.date);
-            return dd >= now && dd <= new Date(now.getTime() + days * 86400000);
+            return dd >= today0 && dd <= deadlineEnd;
         });
 
         // Regulations (unread)
